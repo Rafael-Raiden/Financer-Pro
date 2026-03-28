@@ -3,14 +3,24 @@
 // Estratégia: Cache First para assets, Network First para API
 // ============================================================
 
-const CACHE_NAME   = 'financer-pro-v1';
-const CACHE_STATIC = 'financer-static-v1';
+const CACHE_NAME   = 'financer-pro-v2';
+const CACHE_STATIC = 'financer-static-v2';
 
 // Arquivos para cache imediato (app shell)
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/icons/icon-72.png',
+  '/icons/icon-96.png',
+  '/icons/icon-128.png',
+  '/icons/icon-144.png',
+  '/icons/icon-152.png',
+  '/icons/icon-192.png',
+  '/icons/icon-384.png',
+  '/icons/icon-512.png',
+  '/icons/apple-touch-icon.png',
+  '/icons/favicon.ico',
   'https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
 ];
