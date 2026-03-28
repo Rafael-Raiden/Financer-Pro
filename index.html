@@ -111,7 +111,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .mes-nav-btn:last-child{border-radius:0 12px 12px 0}
 .mes-display{padding:0 14px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;color:var(--text);border-left:1px solid var(--border2);border-right:1px solid var(--border2);height:36px;display:flex;align-items:center;transition:color .15s;font-family:'Syne',sans-serif;letter-spacing:-.3px}
 .mes-display:hover{color:var(--green)}
-.mes-picker{position:fixed;top:auto;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:16px;z-index:300;box-shadow:0 16px 48px rgba(0,0,0,.5);width:min(260px, calc(100vw - 32px))}
+.mes-picker{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:16px;z-index:300;box-shadow:0 16px 48px rgba(0,0,0,.5);width:min(260px, calc(100vw - 32px))}
 .mes-picker-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .mes-picker-year-btn{width:30px;height:30px;background:var(--bg3);border:none;border-radius:8px;color:var(--text);cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .mes-picker-year-btn:hover{background:var(--green);color:#000}
@@ -206,8 +206,26 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));opacity:0;pointer-events:none;transition:opacity .3s}
 .modal-overlay.open{opacity:1;pointer-events:all}
-.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;transform:translateY(20px) scale(.97);transition:transform .3s;padding:28px}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;overflow-x:hidden;transform:translateY(20px) scale(.97);transition:transform .3s;padding:28px;-webkit-overflow-scrolling:touch}
 .modal-overlay.open .modal{transform:translateY(0) scale(1)}
+
+/* MODAL — iOS bottom sheet no celular */
+@media(max-width:768px){
+  .modal-overlay{align-items:flex-end;padding:0;padding-top:env(safe-area-inset-top)}
+  .modal{max-width:100%;max-height:92vh;border-radius:24px 24px 0 0;padding:20px 18px;padding-bottom:max(24px, calc(env(safe-area-inset-bottom) + 16px));transform:translateY(100%)}
+  .modal-overlay.open .modal{transform:translateY(0)}
+  /* Alça visual de bottom sheet */
+  .modal::before{content:'';display:block;width:40px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 18px;flex-shrink:0}
+  /* Todos os form-row colapsam para 1 coluna dentro do modal */
+  .modal .form-row{grid-template-columns:1fr !important}
+  /* Inputs maiores para evitar zoom iOS */
+  .modal .form-input{font-size:16px !important;padding:13px 14px}
+  .modal .tipo-btn{font-size:15px;padding:13px}
+  .modal .btn{padding:13px 20px;font-size:15px}
+  .modal .modal-title{font-size:17px}
+  /* Parcelamento responsivo */
+  #blocoParcelamento .form-row{grid-template-columns:1fr !important}
+}
 .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
 .modal-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800}
 .modal-close{width:34px;height:34px;border-radius:8px;border:none;background:var(--card2);color:var(--text);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .2s}
@@ -216,7 +234,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 /* FORMS */
 .form-group{margin-bottom:16px}
 .form-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);margin-bottom:7px}
-.form-input{width:100%;padding:11px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:inherit;font-size:14px;transition:border .2s,box-shadow .2s;outline:none}
+.form-input{width:100%;padding:11px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;transition:border .2s,box-shadow .2s;outline:none;-webkit-appearance:none;appearance:none}
 .form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,160,.12)}
 .form-input option{background:var(--bg2)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -317,7 +335,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .setup-title{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;margin-bottom:8px}
 .setup-title span{color:var(--green)}
 .setup-subtitle{color:var(--text2);margin-bottom:32px;line-height:1.6}
-.setup-input{width:100%;padding:14px 18px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;color:var(--text);font-size:16px;text-align:center;margin-bottom:12px;font-family:inherit;outline:none}
+.setup-input{width:100%;padding:14px 18px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;color:var(--text);font-size:16px;text-align:center;margin-bottom:12px;font-family:inherit;outline:none;-webkit-appearance:none;appearance:none}
 .setup-input:focus{border-color:var(--accent)}
 .setup-step{display:none}
 .setup-step.active{display:block}
@@ -1731,16 +1749,50 @@ function toggleTheme() {
 // MODALS
 // ============================================================
 function openModal(id) {
-  document.getElementById(id).classList.add('open');
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  // Trava o scroll do body enquanto modal está aberto
+  document.body.style.overflow = 'hidden';
+  // Swipe down para fechar (mobile)
+  const modal = el.querySelector('.modal');
+  if (modal) attachSwipeClose(modal, id);
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
 }
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-overlay')) {
     e.target.classList.remove('open');
+    document.body.style.overflow = '';
   }
 });
+
+// Swipe para baixo fecha modal (padrão iOS)
+function attachSwipeClose(modal, overlayId) {
+  let startY = 0, dragging = false;
+  modal.addEventListener('touchstart', e => {
+    if (modal.scrollTop > 0) return; // só fecha se estiver no topo
+    startY = e.touches[0].clientY;
+    dragging = true;
+  }, { passive: true });
+  modal.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 0) modal.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  modal.addEventListener('touchend', e => {
+    if (!dragging) return;
+    dragging = false;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (dy > 100) {
+      modal.style.transform = '';
+      closeModal(overlayId);
+    } else {
+      modal.style.transform = '';
+    }
+  }, { passive: true });
+}
 
 // ============================================================
 // TOAST
@@ -1800,6 +1852,12 @@ function toggleMesPicker() {
   if (aberto) { picker.style.display = 'none'; return; }
   renderPickerGrid();
   picker.style.display = 'block';
+  // Reposiciona no mobile para não sair da tela
+  const topbar = document.querySelector('.topbar');
+  const topbarH = topbar ? topbar.getBoundingClientRect().bottom : 70;
+  picker.style.top = (topbarH + 8) + 'px';
+  picker.style.left = '50%';
+  picker.style.transform = 'translateX(-50%)';
   // Fecha ao clicar fora
   setTimeout(() => {
     document.addEventListener('click', function fechar(e) {
