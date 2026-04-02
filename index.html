@@ -14,10 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Financer Pro">
 <meta name="msapplication-TileColor" content="#00e5a0">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-96.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
 <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
@@ -241,10 +238,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,160,.12)}
 .form-input option{background:var(--bg2)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.tipo-selector{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.tipo-selector{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px}
 .tipo-btn{padding:12px;border-radius:10px;border:2px solid var(--border2);background:none;color:var(--text2);cursor:pointer;font-weight:600;font-size:14px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
 .tipo-btn.active-receita{border-color:var(--green);background:rgba(0,229,160,.1);color:var(--green)}
 .tipo-btn.active-despesa{border-color:var(--red);background:rgba(255,77,109,.1);color:var(--red)}
+.tipo-btn.active-transferencia{border-color:var(--blue);background:rgba(77,138,255,.1);color:var(--blue)}
 
 /* PROGRESS */
 .progress-bar{height:8px;background:var(--bg3);border-radius:10px;overflow:hidden;margin:8px 0}
@@ -532,6 +530,7 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
         <input type="hidden" id="mesSelect" value="3">
         <input type="hidden" id="anoSelect" value="2026">
         <button class="btn-icon" onclick="syncData()" title="Sincronizar">🔄</button>
+        <button class="btn-icon" id="btnOcultarValores" onclick="toggleOcultarValores()" title="Ocultar/mostrar valores">👁️</button>
         <button class="btn-icon theme-toggle" onclick="toggleTheme()">🌙</button>
       </div>
     </div>
@@ -594,6 +593,7 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
             <button class="tab active" onclick="filterTrans('todos',this)">Todos</button>
             <button class="tab" onclick="filterTrans('receita',this)">Receitas</button>
             <button class="tab" onclick="filterTrans('despesa',this)">Despesas</button>
+            <button class="tab" onclick="filterTrans('transferencia',this)">🔄 Transferências</button>
           </div>
         </div>
         <div class="search-bar">
@@ -894,11 +894,30 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       <button class="modal-close" onclick="closeModal('modalTransacao')">✕</button>
     </div>
     <div class="tipo-selector">
-      <button class="tipo-btn active-despesa" id="btnDespesa" onclick="setTipo('despesa')">⬇️ Despesa</button>
-      <button class="tipo-btn" id="btnReceita" onclick="setTipo('receita')">⬆️ Receita</button>
+      <button class="tipo-btn active-despesa" id="btnDespesa"      onclick="setTipo('despesa')">⬇️ Despesa</button>
+      <button class="tipo-btn"               id="btnReceita"      onclick="setTipo('receita')">⬆️ Receita</button>
+      <button class="tipo-btn"               id="btnTransferencia" onclick="setTipo('transferencia')">🔄 Transferência</button>
     </div>
     <input type="hidden" id="transTipo" value="despesa">
     <input type="hidden" id="transId">
+
+    <!-- BLOCO TRANSFERÊNCIA (pagamento de fatura) — visível apenas quando tipo = transferencia -->
+    <div id="blocoTransferencia" style="display:none;background:var(--bg3);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid var(--blue)">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:10px">🔄 Pagamento de Fatura</div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Débito da Conta *</label>
+          <select class="form-input" id="transfOrigemConta"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Cartão pago *</label>
+          <select class="form-input" id="transfDestinoCartao"><option value="">Selecione o cartão</option></select>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding:8px 12px;background:var(--card);border-radius:8px;font-size:12px;color:var(--text2)">
+        💡 O valor sai da conta mas <strong style="color:var(--blue)">não é contabilizado como despesa</strong> — evita duplicação com as compras já lançadas no cartão.
+      </div>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Data *</label>
@@ -1024,6 +1043,52 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="closeModal('modalCartao')">Cancelar</button>
       <button class="btn btn-primary" style="flex:2;justify-content:center" onclick="salvarCartao()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGAMENTO DE FATURA — tipo: transferencia, sai da conta, quita o cartão -->
+<div class="modal-overlay" id="modalPagamentoFatura">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🔄 Pagar Fatura do Cartão</div>
+      <button class="modal-close" onclick="closeModal('modalPagamentoFatura')">✕</button>
+    </div>
+    <div style="background:rgba(77,138,255,.08);border:1px solid rgba(77,138,255,.2);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text2);line-height:1.6">
+      💡 O pagamento da fatura é registrado como <strong style="color:var(--blue)">transferência</strong> — sai da sua conta bancária e quita o cartão. Não é contabilizado como despesa para evitar duplicação.
+    </div>
+    <input type="hidden" id="pagFatCartaoId">
+    <div class="form-group">
+      <label class="form-label">Cartão *</label>
+      <select class="form-input" id="pagFatCartao" onchange="atualizarInfoFatura()"></select>
+    </div>
+    <div id="infoFaturaCartao" style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:14px;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--text2)">Fatura do mês selecionado</span>
+        <span id="valorFaturaInfo" style="font-family:'Syne',sans-serif;font-weight:800;color:var(--red)"></span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Conta de Débito *</label>
+      <select class="form-input" id="pagFatConta"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data do Pagamento *</label>
+        <input class="form-input" id="pagFatData" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor *</label>
+        <input class="form-input" id="pagFatValor" type="number" step="0.01" placeholder="0,00">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observações</label>
+      <input class="form-input" id="pagFatObs" placeholder="Ex: Pagamento fatura Nubank Janeiro">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="closeModal('modalPagamentoFatura')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center" onclick="salvarPagamentoFatura()">🔄 Registrar Pagamento</button>
     </div>
   </div>
 </div>
@@ -1372,6 +1437,8 @@ const STATE = {
   ano: new Date().getFullYear(),
   moeda: 'BRL',
   nomeUsuario: 'Usuário',
+  alertaOrcamento: 80,
+  valuesHidden: false,
   transacoes: [],
   categorias: [],
   cartoes: [],
@@ -1446,10 +1513,11 @@ async function finalizarSetup() {
 function carregarConfig() {
   const setup = localStorage.getItem('fp_setup');
   if (!setup) return false;
-  STATE.nomeUsuario = localStorage.getItem('fp_nome') || 'Usuário';
-  STATE.apiUrl = localStorage.getItem('fp_url') || '';
-  STATE.moeda = localStorage.getItem('fp_moeda') || 'BRL';
-  STATE.isDemo = !STATE.apiUrl;
+  STATE.nomeUsuario     = localStorage.getItem('fp_nome')   || 'Usuário';
+  STATE.apiUrl          = localStorage.getItem('fp_url')    || '';
+  STATE.moeda           = localStorage.getItem('fp_moeda')  || 'BRL';
+  STATE.alertaOrcamento = parseInt(localStorage.getItem('fp_alerta') || '80');
+  STATE.isDemo          = !STATE.apiUrl;
   return true;
 }
 
@@ -1635,22 +1703,66 @@ function demoApiCall(action, payload) {
       const txns = DEMO.transacoes.filter(x => {
         const d = new Date(x.Data); return d.getMonth()+1==m && d.getFullYear()==a;
       });
-      const rec = txns.filter(x=>x.Tipo==='receita').reduce((s,x)=>s+x.Valor,0);
-      const desp = txns.filter(x=>x.Tipo==='despesa').reduce((s,x)=>s+x.Valor,0);
+      // Apenas receitas e despesas reais entram nos totais — transferências são ignoradas
+      const rec  = txns.filter(x => x.Tipo === 'receita').reduce((s,x) => s + x.Valor, 0);
+      const desp = txns.filter(x => x.Tipo === 'despesa').reduce((s,x) => s + x.Valor, 0);
+      // Gastos por categoria excluem transferências e compras de cartão que já têm fatura separada
       const gpc = {};
-      txns.filter(x=>x.Tipo==='despesa').forEach(x=>{gpc[x.Categoria]=(gpc[x.Categoria]||0)+x.Valor});
+      txns.filter(x => x.Tipo === 'despesa').forEach(x => {
+        gpc[x.Categoria] = (gpc[x.Categoria] || 0) + x.Valor;
+      });
       const hist = [];
       for(let i=5;i>=0;i--){
         const dd = new Date(a, m-1-i, 1);
         const mm = dd.getMonth()+1, aa = dd.getFullYear();
         const tt = DEMO.transacoes.filter(x=>{const d=new Date(x.Data);return d.getMonth()+1==mm&&d.getFullYear()==aa});
-        hist.push({mes:mm,ano:aa,receitas:tt.filter(x=>x.Tipo==='receita').reduce((s,x)=>s+x.Valor,0),despesas:tt.filter(x=>x.Tipo==='despesa').reduce((s,x)=>s+x.Valor,0)});
+        hist.push({
+          mes: mm, ano: aa,
+          receitas:  tt.filter(x => x.Tipo === 'receita').reduce((s,x) => s+x.Valor, 0),
+          despesas:  tt.filter(x => x.Tipo === 'despesa').reduce((s,x) => s+x.Valor, 0)
+        });
       }
-      return {receitas:rec,despesas:desp,saldo:rec-desp,saldoTotal:22490,totalInvestido:22110,totalDividas:33000,gastosPorCategoria:gpc,ultimasTransacoes:txns.slice(0,10),metas:DEMO.metas,orcamentos:demoApiCall('getOrcamento',{}),historicoMeses:hist,mediaDiaria:desp/25,projecaoMes:desp/25*30,contas:DEMO.contas};
+      const hoje = new Date();
+      const mesAtual = (m === hoje.getMonth() + 1 && a === hoje.getFullYear());
+      const diasDecorridos = mesAtual ? hoje.getDate() : new Date(a, m, 0).getDate();
+      const totalDiasMes   = new Date(a, m, 0).getDate();
+      const mediaDiaria    = diasDecorridos > 0 ? desp / diasDecorridos : 0;
+      const projecaoMes    = mediaDiaria * totalDiasMes;
+      return {receitas:rec,despesas:desp,saldo:rec-desp,saldoTotal:22490,totalInvestido:22110,totalDividas:33000,gastosPorCategoria:gpc,ultimasTransacoes:txns.slice(0,10),metas:DEMO.metas,orcamentos:demoApiCall('getOrcamento',{}),historicoMeses:hist,mediaDiaria,projecaoMes,contas:DEMO.contas};
     }
     case 'addTransacao': {
-      const t = {...payload.payload, ID:'T'+Date.now(), Data: payload.payload.data||new Date().toISOString(), Descrição:payload.payload.descricao, Valor:parseFloat(payload.payload.valor), Tipo:payload.payload.tipo, Categoria:payload.payload.categoria, Conta:payload.payload.conta};
-      DEMO.transacoes.unshift(t); return {success:true,id:t.ID};
+      // Mapeia todos os campos incluindo DestinoCartao (para transferências de pagamento de fatura)
+      const t = {
+        ...payload.payload,
+        ID: 'T'+Date.now(),
+        Data: payload.payload.data || new Date().toISOString(),
+        Descrição: payload.payload.descricao,
+        Valor: parseFloat(payload.payload.valor),
+        Tipo: payload.payload.tipo,
+        Categoria: payload.payload.categoria || '',
+        Conta: payload.payload.conta || '',
+        Cartão: payload.payload.cartao || '',
+        DestinoCartao: payload.payload.destino_cartao || ''
+      };
+      DEMO.transacoes.unshift(t);
+      return {success:true, id:t.ID};
+    }
+    // Registra pagamento de fatura como transferência
+    case 'addPagamentoFatura': {
+      const p = payload.payload;
+      const t = {
+        ID: 'T'+Date.now(),
+        Data: p.data || new Date().toISOString(),
+        Descrição: p.descricao || 'Pagamento Fatura',
+        Valor: parseFloat(p.valor),
+        Tipo: 'transferencia',        // Não é despesa — não duplica
+        Categoria: '',
+        Conta: p.origem_conta || '',
+        DestinoCartao: p.destino_cartao || '',
+        Observações: p.observacoes || ''
+      };
+      DEMO.transacoes.unshift(t);
+      return {success:true, id:t.ID};
     }
     case 'deleteTransacao': {
       const idx = DEMO.transacoes.findIndex(x=>x.ID==payload.id);
@@ -1683,11 +1795,33 @@ function demoApiCall(action, payload) {
 // ============================================================
 const SIMBOLOS = {BRL:'R$',USD:'$',EUR:'€'};
 function fmt(val) {
+  if (STATE.valuesHidden) return '••••';
   const s = SIMBOLOS[STATE.moeda] || 'R$';
   return `${s} ${parseFloat(val||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 }
+
+function toggleOcultarValores() {
+  STATE.valuesHidden = !STATE.valuesHidden;
+  const btn = document.getElementById('btnOcultarValores');
+  btn.textContent = STATE.valuesHidden ? '🙈' : '👁️';
+  btn.title = STATE.valuesHidden ? 'Mostrar valores' : 'Ocultar valores';
+  // Re-renderiza a página atual para aplicar a máscara
+  recarregarPaginaAtual();
+}
 function fmtDate(d) {
-  return new Date(d).toLocaleDateString('pt-BR');
+  if (!d) return '';
+  const str = String(d).split('T')[0]; // pega só a parte YYYY-MM-DD
+  const parts = str.split('-');
+  if (parts.length === 3) {
+    // Cria a data no fuso local, não UTC — evita bug de fuso horário
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).toLocaleDateString('pt-BR');
+  }
+  // Fallback: se vier como timestamp completo, extrai a data local corretamente
+  const dt = new Date(d);
+  if (!isNaN(dt)) {
+    return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).toLocaleDateString('pt-BR');
+  }
+  return '';
 }
 const MESES_NOME = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -1717,7 +1851,14 @@ function showPage(id) {
     case 'dashboard': loadDashboard(); break;
     case 'transacoes': loadTransacoes(); break;
     case 'orcamento': loadOrcamento(); break;
-    case 'cartoes': Promise.all([loadCartoes(), loadTransacoes()]).then(() => renderCartoes()); break;
+    case 'cartoes':
+      // Carrega cartões, mês atual e TODAS as transações (para limite comprometido com parcelas)
+      Promise.all([
+        loadCartoes(),
+        loadTransacoes(),
+        apiCall('getTransacoes', {}).then(t => { STATE.todasTransacoes = t; })
+      ]).then(() => renderCartoes());
+      break;
     case 'contas': loadContas().then(renderContas); break;
     case 'investimentos': loadInvestimentos().then(renderInvestimentos); break;
     case 'metas': loadMetas().then(renderMetas); break;
@@ -1726,6 +1867,7 @@ function showPage(id) {
     case 'relatorios': showRelatorio('mensal'); break;
     case 'categorias': loadCategorias().then(renderCategorias); break;
     case 'importar': initImportPage(); break;
+    case 'config': loadConfigPage(); break;
   }
 }
 
@@ -1929,7 +2071,13 @@ async function loadDashboard() {
 }
 
 async function loadOrcamento() {
-  STATE.orcamentos = await apiCall('getOrcamento', { mes: STATE.mes, ano: STATE.ano });
+  // Carrega orçamentos E transações em paralelo para garantir que
+  // STATE.transacoes está sempre no mês correto antes de calcular a projeção
+  const [orcs] = await Promise.all([
+    apiCall('getOrcamento', { mes: STATE.mes, ano: STATE.ano }),
+    apiCall('getTransacoes', { mes: STATE.mes, ano: STATE.ano }).then(t => { STATE.transacoes = t; })
+  ]);
+  STATE.orcamentos = orcs;
   renderOrcamento();
 }
 
@@ -2091,33 +2239,95 @@ function chartOptionsDoughnut() { return { responsive:true, maintainAspectRatio:
 function destroyChart(id) { if (STATE.charts[id]) { STATE.charts[id].destroy(); delete STATE.charts[id]; } }
 
 // ============================================================
-// TRANSAÇÕES
+// TRANSAÇÕES — renderização com suporte a 3 tipos:
+//   "receita"       → entrada de dinheiro (verde, +)
+//   "despesa"       → saída de dinheiro (vermelho, -)
+//   "transferencia" → pagamento de fatura (azul, neutro)
 // ============================================================
 function renderTransItem(t, showActions=false) {
-  const cat = STATE.categorias.find(c => c.Nome === (t.Categoria||t['Categoria']));
-  const bg = cat ? cat.Cor + '22' : 'rgba(255,255,255,0.05)';
-  const icon = cat ? cat.Icone : (t.Tipo==='receita'?'💰':'💸');
-  const isRec = t.Tipo === 'receita';
+  const tipo = t.Tipo || t.tipo || 'despesa';
+
+  // Resolve cartão vinculado em compras de crédito
+  const cartaoId = String(
+    t.Cartão || t.cartao || t['Cartão'] || t.Cartao || t.CARTAO || ''
+  ).trim();
+  const cartaoObj = cartaoId
+    ? STATE.cartoes.find(c =>
+        String(c.ID||c.id).toLowerCase() === cartaoId.toLowerCase() ||
+        (c.Nome||c.nome||'').toLowerCase() === cartaoId.toLowerCase()
+      )
+    : null;
+  const cartaoNome = cartaoObj ? (cartaoObj.Nome||cartaoObj.nome) : cartaoId;
+  const isCartao   = !!cartaoNome && tipo === 'despesa';
+
+  // Resolve cartão de destino em pagamento de fatura
+  const destId = String(
+    t.DestinoCartao || t.destino_cartao || t.destinoCartao || ''
+  ).trim();
+  const destObj  = destId
+    ? STATE.cartoes.find(c =>
+        String(c.ID||c.id).toLowerCase() === destId.toLowerCase() ||
+        (c.Nome||c.nome||'').toLowerCase() === destId.toLowerCase()
+      )
+    : null;
+  const destNome = destObj ? (destObj.Nome||destObj.nome) : destId;
+
+  const cat = STATE.categorias.find(c => c.Nome === (t.Categoria||''));
+
+  // Configura visual por tipo
+  let iconeBg, icone, classeValor, sinal, badge;
+
+  if (tipo === 'receita') {
+    iconeBg    = cat ? cat.Cor+'22' : 'rgba(0,229,160,.12)';
+    icone      = cat ? cat.Icone : '💰';
+    classeValor = 'positivo';
+    sinal      = '+';
+    badge      = '';
+  } else if (tipo === 'transferencia') {
+    iconeBg    = 'rgba(77,138,255,.12)';
+    icone      = '🔄';
+    classeValor = '';
+    sinal      = '';
+    // Mostra para qual cartão foi o pagamento
+    badge = `<span style="background:rgba(77,138,255,.15);color:var(--blue);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">
+      🔄 Pagamento Fatura${destNome ? ' · '+destNome : ''}</span>`;
+  } else {
+    // despesa — comum ou compra no cartão
+    iconeBg    = isCartao ? 'rgba(168,85,247,.12)' : (cat ? cat.Cor+'22' : 'rgba(255,77,109,.1)');
+    icone      = isCartao ? '💳' : (cat ? cat.Icone : '💸');
+    classeValor = 'negativo';
+    sinal      = '-';
+    badge = isCartao
+      ? `<span style="background:rgba(168,85,247,.15);color:var(--purple);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">💳 ${cartaoNome}</span>`
+      : '';
+  }
+
+  const estiloValor = tipo === 'transferencia' ? 'style="color:var(--blue)"' : '';
+
   return `<div class="trans-item">
-    <div class="trans-icon" style="background:${bg}">${icon}</div>
+    <div class="trans-icon" style="background:${iconeBg}">${icone}</div>
     <div class="trans-info">
-      <div class="trans-desc">${t.Descrição||t.descricao||'Sem descrição'}</div>
-      <div class="trans-cat">${t.Categoria||''} ${t.Conta?'· '+t.Conta:''}</div>
+      <div class="trans-desc">${t.Descrição||t.descricao||t.Descricao||'Sem descrição'}</div>
+      <div class="trans-cat">
+        ${tipo !== 'transferencia' ? (t.Categoria||'') : ''}
+        ${t.Conta ? '· '+t.Conta : ''}
+        ${badge}
+      </div>
     </div>
     <div class="trans-right">
-      <div class="trans-val ${isRec?'positivo':'negativo'}">${isRec?'+':'-'}${fmt(t.Valor)}</div>
+      <div class="trans-val ${classeValor}" ${estiloValor}>${sinal}${fmt(t.Valor)}</div>
       <div class="trans-date">${fmtDate(t.Data)}</div>
     </div>
-    ${showActions?`<div class="trans-actions">
+    ${showActions ? `<div class="trans-actions">
       <button class="btn-mini btn-edit" onclick="editarTransacao('${t.ID}',event)">✏️</button>
       <button class="btn-mini btn-del" onclick="deletarTransacao('${t.ID}',event)">🗑️</button>
-    </div>`:''}
+    </div>` : ''}
   </div>`;
 }
 
 function filterTrans(tipo, btn) {
   STATE.transFilter = tipo;
-  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   renderTransacoes();
 }
@@ -2125,8 +2335,16 @@ function filterTrans(tipo, btn) {
 function renderTransacoes() {
   const search = document.getElementById('searchTrans')?.value.toLowerCase() || '';
   let list = [...STATE.transacoes];
-  if (STATE.transFilter !== 'todos') list = list.filter(t => t.Tipo === STATE.transFilter);
-  if (search) list = list.filter(t => (t.Descrição||'').toLowerCase().includes(search) || (t.Categoria||'').toLowerCase().includes(search));
+
+  if (STATE.transFilter !== 'todos') {
+    list = list.filter(t => (t.Tipo||'despesa') === STATE.transFilter);
+  }
+  if (search) {
+    list = list.filter(t =>
+      (t.Descrição||t.descricao||'').toLowerCase().includes(search) ||
+      (t.Categoria||'').toLowerCase().includes(search)
+    );
+  }
 
   const el = document.getElementById('listaTransacoes');
   if (!el) return;
@@ -2137,27 +2355,78 @@ function renderTransacoes() {
   el.innerHTML = '<div class="trans-list">' + list.map(t => renderTransItem(t, true)).join('') + '</div>';
 }
 
+/**
+ * setTipo — define o tipo da transação e atualiza a UI do modal.
+ * Tipos suportados: 'despesa' | 'receita' | 'transferencia'
+ *
+ * Transferência é usada para pagamento de fatura de cartão:
+ *   → sai da conta, mas NÃO conta como despesa no dashboard.
+ */
 function setTipo(tipo) {
   document.getElementById('transTipo').value = tipo;
-  document.getElementById('btnDespesa').className = 'tipo-btn' + (tipo === 'despesa' ? ' active-despesa' : '');
-  document.getElementById('btnReceita').className = 'tipo-btn' + (tipo === 'receita' ? ' active-receita' : '');
-  populateCatSelect('transCat', tipo);
-  // Oculta parcelamento se tipo for receita
-  if (typeof toggleParcelamento === 'function') toggleParcelamento();
+
+  // Botões de seleção de tipo
+  document.getElementById('btnDespesa').className       = 'tipo-btn' + (tipo === 'despesa'       ? ' active-despesa'       : '');
+  document.getElementById('btnReceita').className       = 'tipo-btn' + (tipo === 'receita'       ? ' active-receita'       : '');
+  document.getElementById('btnTransferencia').className = 'tipo-btn' + (tipo === 'transferencia' ? ' active-transferencia' : '');
+
+  const isTransf = tipo === 'transferencia';
+
+  // Campos comuns — ficam ocultos na transferência (conta, cartão, categoria, projeto usam campos próprios)
+  const camposComuns = ['transCat', 'transConta', 'transCartao', 'transProjeto'];
+  camposComuns.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.closest('.form-group').style.display = isTransf ? 'none' : '';
+  });
+
+  // Bloco de transferência (pagamento de fatura)
+  document.getElementById('blocoTransferencia').style.display = isTransf ? 'block' : 'none';
+
+  if (isTransf) {
+    // Popula selects de origem e destino da transferência
+    populateContaSelect('transfOrigemConta');
+    populateCartaoSelectTransf('transfDestinoCartao');
+    // Oculta parcelamento
+    document.getElementById('blocoParcelamento').style.display = 'none';
+  } else {
+    // Comportamento original: popula categorias e toggle parcelamento
+    populateCatSelect('transCat', tipo);
+    if (typeof toggleParcelamento === 'function') toggleParcelamento();
+  }
+}
+
+/**
+ * Popula o select de cartões para a tela de transferência (pagamento de fatura).
+ */
+function populateCartaoSelectTransf(selectId) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  el.innerHTML = '<option value="">Selecione o cartão</option>' +
+    STATE.cartoes.map(c => {
+      const val = c.ID || c.id;
+      return `<option value="${val}">${c.Nome || c.nome}</option>`;
+    }).join('');
 }
 
 function openModalTransacao() {
   STATE.editingTrans = null;
   document.getElementById('transId').value = '';
   document.getElementById('modalTransTitulo').textContent = 'Nova Transação';
-  document.getElementById('transData').value = new Date().toISOString().split('T')[0];
+  // Data local sem bug UTC
+  const hoje = new Date();
+  document.getElementById('transData').value =
+    `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
   document.getElementById('transValor').value = '';
   document.getElementById('transDesc').value = '';
   document.getElementById('transProjeto').value = '';
   document.getElementById('transObs').value = '';
+  // Garante que campos comuns fiquem visíveis antes de setar tipo
+  ['transCat','transConta','transCartao','transProjeto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.closest('.form-group').style.display = '';
+  });
   populateContaSelect('transConta');
   populateCartaoSelect('transCartao');
-  // setTipo DEPOIS de popular contas — popula categorias corretamente
   setTipo('despesa');
   openModal('modalTransacao');
 }
@@ -2169,15 +2438,37 @@ function editarTransacao(id, e) {
   STATE.editingTrans = id;
   document.getElementById('transId').value = t.ID;
   document.getElementById('modalTransTitulo').textContent = 'Editar Transação';
-  document.getElementById('transData').value = new Date(t.Data).toISOString().split('T')[0];
+  // Extrai YYYY-MM-DD sem passar pelo toISOString (bug UTC -3h)
+  const dataStr = String(t.Data || '').split('T')[0];
+  document.getElementById('transData').value = dataStr;
   document.getElementById('transValor').value = t.Valor;
-  document.getElementById('transDesc').value = t.Descrição;
+  document.getElementById('transDesc').value = t.Descrição || t.descricao || '';
   document.getElementById('transProjeto').value = t.Projeto || '';
   document.getElementById('transObs').value = t.Observações || '';
-  setTipo(t.Tipo);
-  document.getElementById('transCat').value = t.Categoria;
-  populateContaSelect('transConta', t.Conta);
-  populateCartaoSelect('transCartao', t.Cartão);
+
+  // Garante campos visíveis antes de setar tipo
+  ['transCat','transConta','transCartao','transProjeto'].forEach(id2 => {
+    const el = document.getElementById(id2);
+    if (el) el.closest('.form-group').style.display = '';
+  });
+
+  const tipo = t.Tipo || 'despesa';
+  if (tipo === 'transferencia') {
+    // Preenche campos exclusivos de transferência
+    populateContaSelect('transfOrigemConta', t.Origem_Conta || t.origem_conta || t.Conta || '');
+    populateCartaoSelectTransf('transfDestinoCartao');
+    setTimeout(() => {
+      const cId = String(t.Destino_Cartao || t.destino_cartao || t.Cartão || '');
+      const sel = document.getElementById('transfDestinoCartao');
+      Array.from(sel.options).forEach(o => { o.selected = o.value === cId; });
+    }, 50);
+    setTipo('transferencia');
+  } else {
+    populateContaSelect('transConta', t.Conta);
+    populateCartaoSelect('transCartao', t.Cartão);
+    setTipo(tipo);
+    document.getElementById('transCat').value = t.Categoria;
+  }
   openModal('modalTransacao');
 }
 
@@ -2235,20 +2526,64 @@ function calcularParcela() {
 }
 
 async function salvarTransacao() {
-  const id            = document.getElementById('transId').value;
-  const tipo          = document.getElementById('transTipo').value;
-  const cartaoId      = document.getElementById('transCartao').value;
-  const numParcelas   = parseInt(document.getElementById('transNumParcelas')?.value || '1');
-  const parcelaInicial= parseInt(document.getElementById('transParcelaInicial')?.value || '1');
-  const valorTotal    = parseFloat(document.getElementById('transValor').value);
+  const id             = document.getElementById('transId').value;
+  const tipo           = document.getElementById('transTipo').value;
+  const dataRaw        = document.getElementById('transData').value;
+  // Envia com T12:00:00 para evitar bug de fuso UTC→dia anterior no Apps Script
+  const dataSafe       = dataRaw ? dataRaw + 'T12:00:00' : dataRaw;
+  const valorTotal     = parseFloat(document.getElementById('transValor').value);
+
+  // ── TRANSFERÊNCIA (pagamento de fatura) ────────────────────────────────────
+  // Transferência NÃO é despesa → não afeta o dashboard de despesas.
+  // Sai da conta bancária e quita o cartão de crédito.
+  if (tipo === 'transferencia') {
+    const origemConta   = document.getElementById('transfOrigemConta').value;
+    const destinoCartao = document.getElementById('transfDestinoCartao').value;
+    const desc          = document.getElementById('transDesc').value || 'Pagamento de fatura';
+
+    if (!valorTotal || !origemConta || !destinoCartao) {
+      toast('Preencha valor, conta de débito e cartão', 'error'); return;
+    }
+
+    const payload = {
+      tipo:           'transferencia',
+      data:           dataSafe,
+      valor:          valorTotal,
+      descricao:      desc,
+      conta:          origemConta,     // conta que paga (débito)
+      cartao:         destinoCartao,   // cartão quitado
+      origem_conta:   origemConta,
+      destino_cartao: destinoCartao,
+      observacoes:    document.getElementById('transObs').value,
+      categoria:      'Pagamento Fatura', // categoria interna para identificação
+    };
+
+    if (id) {
+      await apiCall('updateTransacao', { payload: { ...payload, ID: id } });
+      toast('Transferência atualizada! ✅');
+    } else {
+      await apiCall('addTransacao', { payload });
+      toast('💳 Pagamento de fatura registrado! ✅');
+    }
+
+    closeModal('modalTransacao');
+    loadTransacoes(); loadDashboard();
+    if (document.getElementById('page-cartoes').classList.contains('active')) renderCartoes();
+    return;
+  }
+
+  // ── DESPESA / RECEITA ───────────────────────────────────────────────────────
+  const cartaoId       = document.getElementById('transCartao').value;
+  const numParcelas    = parseInt(document.getElementById('transNumParcelas')?.value || '1');
+  const parcelaInicial = parseInt(document.getElementById('transParcelaInicial')?.value || '1');
 
   const payloadBase = {
-    data:        document.getElementById('transData').value,
+    data:        dataSafe,
     descricao:   document.getElementById('transDesc').value,
     tipo,
     categoria:   document.getElementById('transCat').value,
     conta:       document.getElementById('transConta').value,
-    cartao:      cartaoId,
+    cartao:      cartaoId,   // preenchido = compra no cartão (não reduz saldo da conta)
     projeto:     document.getElementById('transProjeto').value,
     observacoes: document.getElementById('transObs').value,
   };
@@ -2258,7 +2593,7 @@ async function salvarTransacao() {
     return;
   }
 
-  // Edição simples
+  // Edição simples (despesa ou receita)
   if (id) {
     await apiCall('updateTransacao', { payload: { ...payloadBase, ID: id, valor: valorTotal } });
     toast('Transação atualizada! ✅');
@@ -2268,10 +2603,12 @@ async function salvarTransacao() {
   }
 
   // Compra parcelada no cartão
+  // Cada parcela é lançada como uma despesa separada no mês correspondente.
+  // O saldo da conta NÃO é afetado — o débito acontece apenas no pagamento da fatura.
   if (cartaoId && tipo === 'despesa' && numParcelas > 1) {
-    const valorParcela  = valorTotal / numParcelas;
-    const restantes     = numParcelas - parcelaInicial + 1;
-    const dataBase      = new Date(payloadBase.data + 'T12:00:00');
+    const valorParcela = valorTotal / numParcelas;
+    const restantes    = numParcelas - parcelaInicial + 1;
+    const dataBase     = new Date(payloadBase.data);
     let ok = 0;
 
     for (let i = 0; i < restantes; i++) {
@@ -2284,7 +2621,7 @@ async function salvarTransacao() {
           ...payloadBase,
           descricao:   `${payloadBase.descricao} (${numAtual}/${numParcelas})`,
           valor:       valorParcela,
-          data:        dataParcela.toISOString().split('T')[0],
+          data:        `${dataParcela.getFullYear()}-${String(dataParcela.getMonth()+1).padStart(2,'0')}-${String(dataParcela.getDate()).padStart(2,'0')}T12:00:00`,
           observacoes: `Parcela ${numAtual}/${numParcelas} — Total: ${fmt(valorTotal)}`
         }});
         ok++;
@@ -2292,10 +2629,11 @@ async function salvarTransacao() {
     }
 
     const msg = parcelaInicial > 1
-      ? `💳 ${ok} parcelas restantes lançadas (${parcelaInicial}ª a ${numParcelas}ª) — ${fmt(valorParcela)}/mês`
+      ? `💳 ${ok} parcelas lançadas (${parcelaInicial}ª a ${numParcelas}ª) — ${fmt(valorParcela)}/mês`
       : `💳 ${ok}/${numParcelas} parcelas lançadas — ${fmt(valorParcela)}/mês`;
     toast(msg, 'success');
   } else {
+    // Transação simples (despesa ou receita à vista)
     await apiCall('addTransacao', { payload: { ...payloadBase, valor: valorTotal } });
     toast('Transação adicionada! ✅');
   }
@@ -2314,6 +2652,142 @@ async function salvarTransacao() {
 document.getElementById('fabBtn').onclick = openModalTransacao;
 
 // ============================================================
+// PAGAMENTO DE FATURA — tipo: "transferencia"
+// Sai da conta bancária → quita o cartão.
+// NÃO é despesa → não duplica no dashboard.
+// ============================================================
+
+/**
+ * Abre o modal de pagamento de fatura.
+ * Se cartaoIdx >= 0, pré-seleciona o cartão e preenche o valor da fatura do mês.
+ */
+function abrirPagamentoFatura(cartaoIdx = -1) {
+  // Popula selects de cartão e conta
+  const selCartao = document.getElementById('pagFatCartao');
+  selCartao.innerHTML = '<option value="">Selecione o cartão</option>' +
+    STATE.cartoes.map(c => {
+      const val = String(c.ID || c.id || '');
+      return `<option value="${val}">${c.Nome || c.nome}</option>`;
+    }).join('');
+
+  populateContaSelect('pagFatConta');
+
+  // Data padrão: hoje em local time
+  const hoje = new Date();
+  document.getElementById('pagFatData').value =
+    `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  document.getElementById('pagFatValor').value   = '';
+  document.getElementById('pagFatObs').value     = '';
+  document.getElementById('infoFaturaCartao').style.display = 'none';
+
+  // Pré-seleciona cartão se informado e preenche valor da fatura
+  if (cartaoIdx >= 0 && STATE.cartoes[cartaoIdx]) {
+    const c   = STATE.cartoes[cartaoIdx];
+    const cId = String(c.ID || c.id || '');
+    selCartao.value = cId;
+    atualizarInfoFatura(); // calcula fatura do mês e preenche valor
+  }
+
+  openModal('modalPagamentoFatura');
+}
+
+/**
+ * Atualiza o card informativo com o valor da fatura do mês selecionado
+ * quando o usuário escolhe um cartão no modal de pagamento.
+ */
+function atualizarInfoFatura() {
+  const selCartao = document.getElementById('pagFatCartao');
+  const cId       = selCartao.value;
+  if (!cId) {
+    document.getElementById('infoFaturaCartao').style.display = 'none';
+    return;
+  }
+
+  // Encontra o índice do cartão em STATE.cartoes
+  const idx = STATE.cartoes.findIndex(c =>
+    String(c.ID || c.id).toLowerCase() === cId.toLowerCase()
+  );
+
+  const totalMes = idx >= 0 ? calcularFaturaMes(idx) : 0;
+
+  document.getElementById('valorFaturaInfo').textContent = fmt(totalMes);
+  document.getElementById('infoFaturaCartao').style.display = 'block';
+
+  // Preenche automaticamente o valor sugerido (fatura do mês)
+  if (totalMes > 0 && !document.getElementById('pagFatValor').value) {
+    document.getElementById('pagFatValor').value = totalMes.toFixed(2);
+  }
+
+  // Sugestão de descrição
+  const c      = STATE.cartoes[idx];
+  const mNome  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][STATE.mes - 1];
+  const descEl = document.getElementById('pagFatObs');
+  if (!descEl.value) {
+    descEl.value = `Pagamento fatura ${c.Nome || c.nome} ${mNome}/${STATE.ano}`;
+  }
+}
+
+/**
+ * Salva o pagamento de fatura como transação do tipo "transferencia".
+ * Esta lógica garante que o valor NÃO seja contabilizado como despesa —
+ * evitando a duplicação com as compras já registradas no cartão.
+ *
+ * Estrutura do payload:
+ * {
+ *   tipo:           "transferencia",
+ *   conta:          "Nome da conta de débito",   // saiu daqui
+ *   destino_cartao: "ID do cartão",              // foi para cá
+ *   valor:          200.00,
+ *   ...
+ * }
+ */
+async function salvarPagamentoFatura() {
+  const cartaoId   = document.getElementById('pagFatCartao').value;
+  const contaId    = document.getElementById('pagFatConta').value;
+  const dataRaw    = document.getElementById('pagFatData').value;
+  const valor      = parseFloat(document.getElementById('pagFatValor').value);
+  const obs        = document.getElementById('pagFatObs').value;
+
+  if (!cartaoId || !contaId || !valor || !dataRaw) {
+    toast('Preencha cartão, conta, data e valor', 'error');
+    return;
+  }
+
+  // Resolve nome do cartão para a descrição
+  const cartaoObj  = STATE.cartoes.find(c => String(c.ID||c.id) === cartaoId);
+  const cartaoNome = cartaoObj ? (cartaoObj.Nome || cartaoObj.nome) : cartaoId;
+  const mNome      = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                      'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][STATE.mes - 1];
+
+  const dataSafe = dataRaw + 'T12:00:00'; // evita bug de fuso UTC→dia anterior
+
+  const payload = {
+    tipo:           'transferencia',         // ← chave: não é despesa
+    data:           dataSafe,
+    valor:          valor,
+    descricao:      obs || `Pagamento fatura ${cartaoNome} ${mNome}/${STATE.ano}`,
+    conta:          contaId,                 // conta de débito (origem)
+    origem_conta:   contaId,
+    cartao:         cartaoId,                // compatibilidade com filtros existentes
+    destino_cartao: cartaoId,               // campo explícito para pagamentos de fatura
+    categoria:      'Pagamento Fatura',      // categoria interna para relatórios
+    observacoes:    obs,
+  };
+
+  try {
+    await apiCall('addTransacao', { payload });
+    toast(`🔄 Pagamento de R$ ${valor.toFixed(2)} registrado para ${cartaoNome}! ✅`, 'success');
+    closeModal('modalPagamentoFatura');
+    loadTransacoes();
+    loadDashboard();
+    if (document.getElementById('page-cartoes').classList.contains('active')) renderCartoes();
+  } catch(e) {
+    toast('Erro ao salvar pagamento: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
 // ORÇAMENTO
 // ============================================================
 async function renderOrcamento() {
@@ -2323,17 +2797,30 @@ async function renderOrcamento() {
   if (!orcs.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">Nenhum orçamento definido</div></div>';
   } else {
+    // Calcula gasto real de cada categoria direto das transações do mês
+    // Exclui transações de cartão de crédito (para evitar duplicação com fatura)
+    const gastosPorCat = {};
+    STATE.transacoes.forEach(t => {
+      if (t.Tipo !== 'despesa') return;
+      const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').trim();
+      if (cartaoT) return; // ignora compras de cartão — essas são pagas na fatura
+      const cat = t.Categoria || t.categoria || '';
+      gastosPorCat[cat] = (gastosPorCat[cat] || 0) + parseFloat(t.Valor || 0);
+    });
+
     el.innerHTML = orcs.map(o => {
       const pl = parseFloat(o.Valor_Planejado||0);
-      const gs = parseFloat(o.Valor_Gasto_Real||o.Valor_Gasto||0);
+      // Usa o gasto calculado das transações; usa o valor do backend como fallback
+      const gs = gastosPorCat[o.Categoria] ?? parseFloat(o.Valor_Gasto_Real||o.Valor_Gasto||0);
       const perc = pl > 0 ? (gs/pl*100) : 0;
-      const alertClass = perc >= 100 ? 'over' : perc >= (o.Alerta_Percentual||80) ? 'warn' : 'ok';
-      const alertText = perc >= 100 ? '🔴 Estourou' : perc >= 80 ? '⚠️ Alerta' : '✅ OK';
-      const color = perc >= 100 ? 'var(--red)' : perc >= 80 ? 'var(--yellow)' : 'var(--green)';
+      const limAlerta = o.Alerta_Percentual || STATE.alertaOrcamento || 80;
+      const alertClass = perc >= 100 ? 'over' : perc >= limAlerta ? 'warn' : 'ok';
+      const alertText  = perc >= 100 ? '🔴 Estourou' : perc >= limAlerta ? '⚠️ Alerta' : '✅ OK';
+      const color      = perc >= 100 ? 'var(--red)' : perc >= limAlerta ? 'var(--yellow)' : 'var(--green)';
       return `<div class="orcamento-item">
         <div class="orcamento-header">
           <div class="orcamento-cat">${getCatIcon(o.Categoria)} ${o.Categoria}</div>
-          <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <div class="orcamento-valores">${fmt(gs)} / ${fmt(pl)}</div>
             <span class="orcamento-alert ${alertClass}">${alertText}</span>
             <button class="btn-mini btn-edit" onclick="editarOrcamento('${o.ID||o.id}')">✏️</button>
@@ -2345,41 +2832,80 @@ async function renderOrcamento() {
     }).join('');
   }
 
-  // Chart
+  // Chart — usa gastos recalculados das transações (excluindo cartão)
   destroyChart('chartOrcamento');
   if (orcs.length) {
+    // gastosPorCat pode não estar definido se orcs estava vazio (caminho de entrada)
+    const gastosPorCatChart = {};
+    STATE.transacoes.forEach(t => {
+      if (t.Tipo !== 'despesa') return;
+      const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').trim();
+      if (cartaoT) return;
+      const cat = t.Categoria || t.categoria || '';
+      gastosPorCatChart[cat] = (gastosPorCatChart[cat] || 0) + parseFloat(t.Valor || 0);
+    });
+
     const ctx = document.getElementById('chartOrcamento').getContext('2d');
     STATE.charts['chartOrcamento'] = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: orcs.map(o => o.Categoria),
         datasets: [
-          { label:'Planejado', data: orcs.map(o=>parseFloat(o.Valor_Planejado||0)), backgroundColor:'rgba(77,138,255,0.4)', borderRadius:4 },
-          { label:'Gasto', data: orcs.map(o=>parseFloat(o.Valor_Gasto_Real||0)), backgroundColor:'rgba(255,77,109,0.7)', borderRadius:4 }
+          { label:'Planejado', data: orcs.map(o => parseFloat(o.Valor_Planejado||0)), backgroundColor:'rgba(77,138,255,0.4)', borderRadius:4 },
+          { label:'Gasto', data: orcs.map(o => gastosPorCatChart[o.Categoria] || 0), backgroundColor:'rgba(255,77,109,0.7)', borderRadius:4 }
         ]
       },
       options: { ...chartOptions(), indexAxis:'y' }
     });
   }
 
-  // Projeção
-  if (STATE.dashboard) {
-    const projecaoEl = document.getElementById('projOrcamento');
-    const md = STATE.dashboard.mediaDiaria;
-    const pm = STATE.dashboard.projecaoMes;
-    projecaoEl.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  // Projeção — apenas despesas sem cartão, garantindo precisão
+  const projecaoEl = document.getElementById('projOrcamento');
+  const hoje           = new Date();
+  const mesAtual       = (STATE.mes === hoje.getMonth() + 1 && STATE.ano === hoje.getFullYear());
+  const totalDiasMes   = new Date(STATE.ano, STATE.mes, 0).getDate();
+  const mesFuturo      = (STATE.ano > hoje.getFullYear()) ||
+                         (STATE.ano === hoje.getFullYear() && STATE.mes > hoje.getMonth() + 1);
+  const diasDecorridos = mesFuturo ? 0 : mesAtual ? hoje.getDate() : totalDiasMes;
+
+  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+
+  function toISO(d) {
+    if (!d) return '';
+    const s = String(d).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+    const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (br) return `${br[3]}-${br[2].padStart(2,'0')}-${br[1].padStart(2,'0')}`;
+    return s.substring(0, 10);
+  }
+
+  const totalDesp = STATE.transacoes
+    .filter(t => {
+      if (t.Tipo !== 'despesa') return false;
+      // Exclui compras de cartão — são pagas na fatura, não devem entrar na projeção de despesas
+      const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').trim();
+      if (cartaoT) return false;
+      if (!mesAtual) return true;
+      return toISO(t.Data) <= hojeStr;
+    })
+    .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+
+  const md = diasDecorridos > 0 ? totalDesp / diasDecorridos : 0;
+  const pm = md * totalDiasMes;
+  projecaoEl.innerHTML = mesFuturo
+    ? `<div style="background:var(--bg3);padding:14px;border-radius:12px;text-align:center;color:var(--text2);font-size:13px">
+        Sem projeção para meses futuros
+      </div>`
+    : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div style="background:var(--bg3);padding:14px;border-radius:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Média Diária</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Média Diária (${diasDecorridos} dias)</div>
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:var(--yellow)">${fmt(md)}</div>
         </div>
         <div style="background:var(--bg3);padding:14px;border-radius:12px;text-align:center">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Projeção do Mês</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Projeção (${totalDiasMes} dias)</div>
           <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:var(--orange)">${fmt(pm)}</div>
         </div>
-      </div>
-    `;
-  }
+      </div>`;
 }
 
 // ============================================================
@@ -2404,8 +2930,9 @@ function renderCartoes() {
     const bandeira = c.Bandeira || c.bandeira || '';
     const nome     = c.Nome     || c.nome     || '';
     const limite   = parseFloat(c.Limite   || c.limite   || 0);
-    const usado    = calcularFaturaCartao(idx);
-    const dispPct  = limite > 0 ? Math.min(100, (usado / limite) * 100) : 0;
+    const totalUsado = calcularFaturaCartao(idx);   // todas as parcelas futuras
+    const faturasMes = calcularFaturaMes(idx);       // só o mês selecionado
+    const dispPct    = limite > 0 ? Math.min(100, (totalUsado / limite) * 100) : 0;
     const fech     = c.Dia_Fechamento || c.dia_fechamento || '';
     const venc     = c.Dia_Vencimento || c.dia_vencimento || '';
     const cor      = c.Cor || c.cor || '#6C5CE7';
@@ -2422,18 +2949,25 @@ function renderCartoes() {
       </div>
       <div class="card-limit-row">
         <div class="card-limit-item">
-          <label>Usado este mês</label>
-          <span style="color:${dispPct>80?'#ff4d6d':'#fff'}">${fmt(usado)}</span>
+          <label>Fatura ${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][STATE.mes-1]}</label>
+          <span style="color:${dispPct>80?'#ff4d6d':'#fff'}">${fmt(faturasMes)}</span>
         </div>
         <div class="card-limit-item">
           <label>Limite disponível</label>
-          <span>${fmt(limite - usado)}</span>
+          <span>${fmt(limite - totalUsado)}</span>
         </div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:14px">
+      <div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:6px;text-align:right">
+        Total comprometido: ${fmt(totalUsado)} / ${fmt(limite)}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
         <button onclick="abrirCompraCartao(${idx})"
           style="flex:2;padding:0;border-radius:8px;border:none;background:rgba(255,255,255,.2);color:#fff;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;width:100%">
           💳 + Compra
+        </button>
+        <button onclick="abrirPagamentoFatura(${idx})"
+          style="flex:2;padding:0;border-radius:8px;border:1px solid rgba(77,138,255,.4);background:rgba(77,138,255,.15);color:#4d8aff;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;height:38px;width:100%">
+          🔄 Pagar
         </button>
         <button onclick="window._cartaoEditar(${idx})"
           style="flex:1;padding:0;height:38px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;width:100%">
@@ -2451,18 +2985,41 @@ function renderCartoes() {
   renderFaturaCartoes();
 }
 
-// Calcula total gasto no cartão no mês atual
+// Calcula o total comprometido no cartão considerando TODAS as parcelas futuras
+// (não apenas o mês atual) para refletir o limite real utilizado
 function calcularFaturaCartao(idx) {
   const c = STATE.cartoes[idx];
   if (!c) return 0;
-  const id   = c.ID   || c.id   || '';
-  const nome = c.Nome || c.nome || '';
+  const cId   = String(c.ID   || c.id   || '').toLowerCase();
+  const cNome = String(c.Nome || c.nome || '').toLowerCase().trim();
+  // STATE.todasTransacoes tem todas as transações (todos os meses)
+  // Usa STATE.transacoes como fallback se todasTransacoes ainda não foi carregada
+  const fonte = STATE.todasTransacoes || STATE.transacoes;
+  return fonte
+    .filter(t => {
+      if (t.Tipo !== 'despesa') return false;
+      const cartaoT = String(
+        t.Cartão || t.cartao || t['Cartão'] || t.Cartao || t.CARTAO || ''
+      ).toLowerCase().trim();
+      return cartaoT === cId || cartaoT === cNome;
+    })
+    .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+}
+
+// Calcula apenas o gasto do mês selecionado no cartão (para a fatura do mês)
+function calcularFaturaMes(idx) {
+  const c = STATE.cartoes[idx];
+  if (!c) return 0;
+  const cId   = String(c.ID   || c.id   || '').toLowerCase();
+  const cNome = String(c.Nome || c.nome || '').toLowerCase().trim();
   return STATE.transacoes
     .filter(t => {
-      const cartaoT = t.Cartão || t.cartao || t['Cartão'] || '';
-      return String(cartaoT) === String(id) || String(cartaoT) === nome;
+      if (t.Tipo !== 'despesa') return false;
+      const cartaoT = String(
+        t.Cartão || t.cartao || t['Cartão'] || t.Cartao || t.CARTAO || ''
+      ).toLowerCase().trim();
+      return cartaoT === cId || cartaoT === cNome;
     })
-    .filter(t => t.Tipo === 'despesa')
     .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
 }
 
@@ -2472,11 +3029,11 @@ function renderFaturaCartoes() {
   if (!faturaEl) {
     faturaEl = document.createElement('div');
     faturaEl.id = 'secaoFaturas';
-    faturaEl.style.cssText = 'grid-column:1/-1;margin-top:8px';
+    faturaEl.style.cssText = 'margin-top:16px';
     document.getElementById('listaCartoes').parentElement.appendChild(faturaEl);
   }
 
-  if (!STATE.cartoes.length || !STATE.transacoes.length) { faturaEl.innerHTML = ''; return; }
+  if (!STATE.cartoes.length) { faturaEl.innerHTML = ''; return; }
 
   const mNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][STATE.mes - 1];
 
@@ -2484,46 +3041,61 @@ function renderFaturaCartoes() {
     <div class="card" style="margin-top:0">
       <div class="card-header">
         <div class="card-title">🧾 Faturas de ${mNome}/${STATE.ano}</div>
-        <button class="btn btn-secondary btn-sm" onclick="abrirCompraCartao(-1)">+ Nova Compra no Cartão</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="abrirPagamentoFatura()">🔄 Pagar Fatura</button>
+          <button class="btn btn-secondary btn-sm" onclick="abrirCompraCartao(-1)">+ Nova Compra</button>
+        </div>
       </div>
       <div id="listaFaturas"></div>
     </div>`;
 
   const faturas = STATE.cartoes.map((c, idx) => {
-    const id   = c.ID   || c.id   || '';
-    const nome = c.Nome || c.nome || '';
+    const cId   = String(c.ID   || c.id   || '');
+    const cNome = String(c.Nome || c.nome || '').toLowerCase().trim();
+
     const compras = STATE.transacoes.filter(t => {
-      const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || '');
-      return (cartaoT === String(id) || cartaoT === nome) && t.Tipo === 'despesa';
-    }).sort((a, b) => new Date(b.Data) - new Date(a.Data));
+      if (t.Tipo !== 'despesa') return false;
+      // Testa todas as variações de nome do campo cartão que o Google Sheets pode retornar
+      const cartaoT = String(
+        t.Cartão || t.cartao || t['Cartão'] || t.Cartao || t.CARTAO || ''
+      ).toLowerCase().trim();
+      return cartaoT === cId.toLowerCase() || cartaoT === cNome || cartaoT === cId;
+    }).sort((a, b) => {
+      const da = new Date(String(a.Data).includes('/') ? a.Data.split('/').reverse().join('-') : a.Data);
+      const db = new Date(String(b.Data).includes('/') ? b.Data.split('/').reverse().join('-') : b.Data);
+      return db - da;
+    });
+
     return { c, idx, compras, total: compras.reduce((s, t) => s + parseFloat(t.Valor || 0), 0) };
-  }).filter(f => f.compras.length > 0);
+  });
 
   const listaEl = document.getElementById('listaFaturas');
-  if (!faturas.length) {
+
+  const comCompras = faturas.filter(f => f.compras.length > 0);
+  if (!comCompras.length) {
     listaEl.innerHTML = '<div class="empty" style="padding:20px"><div class="empty-icon">🧾</div><div class="empty-text">Nenhuma compra no cartão este mês</div></div>';
     return;
   }
 
-  listaEl.innerHTML = faturas.map(({ c, idx, compras, total }) => `
+  listaEl.innerHTML = comCompras.map(({ c, idx, compras, total }) => `
     <div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-radius:10px;margin-bottom:6px;border:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:10px;height:10px;border-radius:50%;background:${c.Cor||c.cor||'#6C5CE7'}"></div>
+          <div style="width:10px;height:10px;border-radius:50%;background:${c.Cor||c.cor||'#6C5CE7'};flex-shrink:0"></div>
           <span style="font-weight:700">${c.Nome||c.nome}</span>
           <span style="font-size:12px;color:var(--text2)">${compras.length} compra(s)</span>
         </div>
-        <span style="font-family:'Syne',sans-serif;font-weight:800;color:var(--red)">${fmt(total)}</span>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;color:var(--red);flex-shrink:0">${fmt(total)}</span>
       </div>
       <div class="trans-list" style="padding:0 4px">
         ${compras.slice(0, 5).map(t => `
           <div class="trans-item" style="background:var(--bg3)">
-            <div class="trans-icon" style="background:rgba(255,77,109,.1);font-size:14px">🛍️</div>
+            <div class="trans-icon" style="background:rgba(255,77,109,.1);font-size:14px;flex-shrink:0">🛍️</div>
             <div class="trans-info">
-              <div class="trans-desc" style="font-size:13px">${t.Descrição||t.descricao||''}</div>
+              <div class="trans-desc" style="font-size:13px">${t.Descrição||t.descricao||t.Descricao||''}</div>
               <div class="trans-cat" style="font-size:11px">${t.Categoria||''} · ${fmtDate(t.Data)}</div>
             </div>
-            <div class="trans-val negativo" style="font-size:13px">-${fmt(t.Valor)}</div>
+            <div class="trans-val negativo" style="font-size:13px;flex-shrink:0">-${fmt(t.Valor)}</div>
           </div>`).join('')}
         ${compras.length > 5 ? `<div style="text-align:center;font-size:12px;color:var(--text2);padding:8px">...e mais ${compras.length-5} compras</div>` : ''}
       </div>
@@ -2532,27 +3104,38 @@ function renderFaturaCartoes() {
 
 // Abre modal de compra no cartão
 function abrirCompraCartao(idx) {
-  // Pré-seleciona o cartão se idx >= 0
-  setTipo('despesa');
-  populateContaSelect('transConta');
-  populateCartaoSelect('transCartao');
-  if (idx >= 0 && STATE.cartoes[idx]) {
-    const c = STATE.cartoes[idx];
-    setTimeout(() => {
-      const sel = document.getElementById('transCartao');
-      Array.from(sel.options).forEach(o => {
-        if (o.value == (c.ID||c.id) || o.text.includes(c.Nome||c.nome)) o.selected = true;
-      });
-    }, 50);
-  }
+  // Limpa o formulário
   document.getElementById('transId').value = '';
   document.getElementById('modalTransTitulo').textContent = '💳 Compra no Cartão';
-  document.getElementById('transData').value = new Date().toISOString().split('T')[0];
+  // Data local sem bug de fuso (não usa toISOString)
+  const hoje = new Date();
+  const dataHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  document.getElementById('transData').value = dataHoje;
   document.getElementById('transValor').value = '';
   document.getElementById('transDesc').value = '';
   document.getElementById('transProjeto').value = '';
   document.getElementById('transObs').value = '';
-  document.getElementById('modalTransacao').classList.add('open');
+
+  // Garante tipo despesa e popula selects
+  setTipo('despesa');
+  populateContaSelect('transConta');
+  populateCartaoSelect('transCartao');
+
+  // Pré-seleciona o cartão e ativa o bloco de parcelamento
+  if (idx >= 0 && STATE.cartoes[idx]) {
+    const c = STATE.cartoes[idx];
+    const cId = String(c.ID || c.id || '');
+    const sel = document.getElementById('transCartao');
+    // Seleciona a opção cujo value bate com o ID do cartão
+    Array.from(sel.options).forEach(o => {
+      o.selected = (o.value === cId || o.text.trim() === (c.Nome || c.nome || '').trim());
+    });
+    // Dispara o onchange para ativar o bloco de parcelamento
+    sel.dispatchEvent(new Event('change'));
+  }
+
+  // Usa openModal para garantir scroll lock, swipe close e populateSelects
+  openModal('modalTransacao');
 }
 function novoCartao() {
   STATE.editingCartaoIdx = null;
@@ -2564,7 +3147,7 @@ function novoCartao() {
   document.getElementById('cartaoFechamento').value = '';
   document.getElementById('cartaoVencimento').value = '';
   document.getElementById('cartaoCor').value = '#6C5CE7';
-  document.getElementById('modalCartao').classList.add('open');
+  openModal('modalCartao');
 }
 
 // Abre o modal para EDITAR cartão (recebe índice do array STATE.cartoes)
@@ -2587,7 +3170,7 @@ function editarCartao(idx) {
   document.getElementById('cartaoFechamento').value = c.Dia_Fechamento || c.dia_fechamento || '';
   document.getElementById('cartaoVencimento').value = c.Dia_Vencimento || c.dia_vencimento || '';
   document.getElementById('cartaoCor').value = c.Cor || c.cor || '#6C5CE7';
-  document.getElementById('modalCartao').classList.add('open');
+  openModal('modalCartao');
 }
 
 async function deletarCartaoByObj(c) {
@@ -3427,25 +4010,27 @@ async function deletarCategoria(id) {
 // CONFIG PAGE
 // ============================================================
 async function loadConfigPage() {
-  document.getElementById('cfgNome').value = STATE.nomeUsuario;
-  document.getElementById('cfgMoeda').value = STATE.moeda;
-  document.getElementById('cfgUrl').value = STATE.apiUrl;
+  document.getElementById('cfgNome').value   = STATE.nomeUsuario  || '';
+  document.getElementById('cfgMoeda').value  = STATE.moeda        || 'BRL';
+  document.getElementById('cfgUrl').value    = STATE.apiUrl       || '';
+  document.getElementById('cfgAlerta').value = STATE.alertaOrcamento || 80;
 }
 
 function salvarConfig() {
-  STATE.nomeUsuario = document.getElementById('cfgNome').value || STATE.nomeUsuario;
-  STATE.moeda = document.getElementById('cfgMoeda').value;
-  STATE.apiUrl = document.getElementById('cfgUrl').value;
-  const alerta = document.getElementById('cfgAlerta').value;
+  STATE.nomeUsuario     = document.getElementById('cfgNome').value   || STATE.nomeUsuario;
+  STATE.moeda           = document.getElementById('cfgMoeda').value;
+  STATE.apiUrl          = document.getElementById('cfgUrl').value;
+  STATE.alertaOrcamento = parseInt(document.getElementById('cfgAlerta').value || '80');
 
-  localStorage.setItem('fp_nome', STATE.nomeUsuario);
-  localStorage.setItem('fp_moeda', STATE.moeda);
-  localStorage.setItem('fp_url', STATE.apiUrl);
+  localStorage.setItem('fp_nome',   STATE.nomeUsuario);
+  localStorage.setItem('fp_moeda',  STATE.moeda);
+  localStorage.setItem('fp_url',    STATE.apiUrl);
+  localStorage.setItem('fp_alerta', STATE.alertaOrcamento);
 
   document.getElementById('sidebarUserName').textContent = STATE.nomeUsuario;
-  document.getElementById('sidebarMoeda').textContent = STATE.moeda;
+  document.getElementById('sidebarMoeda').textContent    = STATE.moeda;
 
-  toast('Configurações salvas!');
+  toast('Configurações salvas! ✅');
 }
 
 // ============================================================
