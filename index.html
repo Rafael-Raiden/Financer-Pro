@@ -539,6 +539,7 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard">
         <div class="stats-grid" id="statsGrid"></div>
+        <div id="dashFaturas" style="margin-bottom:20px"></div>
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
@@ -874,6 +875,15 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
                 <li>Quem pode acessar: <strong>Qualquer pessoa</strong></li>
                 <li>Copie a URL gerada e cole nas configurações</li>
               </ol>
+            </div>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+              <div class="card-title" style="font-size:14px;margin-bottom:10px">💾 Cache Local</div>
+              <p style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6">
+                Os dados são salvos automaticamente no seu dispositivo após cada sincronização.
+                Mesmo sem conexão com a planilha, o app exibe os <strong style="color:var(--text)">últimos valores carregados</strong>.
+              </p>
+              <div id="cacheInfo" style="background:var(--bg3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+              <button class="btn btn-danger btn-sm" onclick="limparCache();loadConfigPage()">🗑️ Limpar Cache Local</button>
             </div>
           </div>
         </div>
@@ -1539,6 +1549,15 @@ async function iniciarApp() {
   document.getElementById('sidebarUserName').textContent = STATE.nomeUsuario;
   document.getElementById('sidebarMoeda').textContent = `${STATE.moeda}`;
 
+  // Restaura cache local para exibir dados imediatamente enquanto a API carrega
+  if (!STATE.isDemo) {
+    const qtd = restaurarDoCache();
+    if (qtd > 0) {
+      // Renderiza dashboard com dados do cache enquanto a API responde
+      if (STATE.dashboard) renderDashboard();
+    }
+  }
+
   carregarDadosIniciais();
 }
 
@@ -1549,6 +1568,60 @@ async function carregarDadosIniciais() {
     loadContas(),
   ]);
   loadDashboard();
+}
+
+// ============================================================
+// CACHE LOCAL — persiste os últimos dados carregados no localStorage
+// Permite que o app exiba informações mesmo sem conexão com a API
+// ============================================================
+const CACHE_KEY = 'fp_cache_v1';
+const CACHE_ACTIONS = ['getCategorias','getCartoes','getContas','getMetas','getInvestimentos','getDividas','getRecorrencias','getDashboard','getTransacoes','getOrcamento'];
+
+function salvarCache(action, payload, data) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    const chave = action + (payload?.mes ? `_${payload.mes}_${payload.ano}` : '');
+    cache[chave] = { data, ts: Date.now() };
+    // Limita a 2MB — remove entradas antigas se necessário
+    const raw = JSON.stringify(cache);
+    if (raw.length < 1800000) localStorage.setItem(CACHE_KEY, raw);
+  } catch(e) { /* silencioso */ }
+}
+
+function lerCache(action, payload) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    const chave = action + (payload?.mes ? `_${payload.mes}_${payload.ano}` : '');
+    return cache[chave]?.data ?? null;
+  } catch(e) { return null; }
+}
+
+function limparCache() {
+  localStorage.removeItem(CACHE_KEY);
+  toast('Cache local limpo.','info');
+}
+
+// Restaura dados do cache no STATE (chamado no início se API falhar)
+function restaurarDoCache() {
+  const mapeamento = {
+    getCategorias:   d => { STATE.categorias   = d; },
+    getCartoes:      d => { STATE.cartoes       = d; },
+    getContas:       d => { STATE.contas        = d; },
+    getMetas:        d => { STATE.metas         = d; },
+    getInvestimentos:d => { STATE.investimentos = d; },
+    getDividas:      d => { STATE.dividas       = d; },
+    getRecorrencias: d => { STATE.recorrencias  = d; },
+    getDashboard:    d => { STATE.dashboard     = d; if(d?.todasTransacoes) STATE.todasTransacoes = d.todasTransacoes; },
+  };
+  let restaurados = 0;
+  Object.entries(mapeamento).forEach(([action, fn]) => {
+    const d = lerCache(action, {});
+    if (d) { fn(d); restaurados++; }
+  });
+  // Restaura transacoes do mês atual
+  const tMes = lerCache('getTransacoes', { mes: STATE.mes, ano: STATE.ano });
+  if (tMes) { STATE.transacoes = tMes; restaurados++; }
+  return restaurados;
 }
 
 // ============================================================
@@ -1586,9 +1659,22 @@ async function apiCall(action, payload = {}) {
     }
 
     if (data.error) throw new Error(data.error);
+
+    // Salva no cache se for uma ação de leitura
+    if (CACHE_ACTIONS.includes(action)) salvarCache(action, payload, data);
+
     return data;
   } catch (e) {
     console.error('API Error:', e);
+    // Tenta servir do cache antes de mostrar erro
+    if (CACHE_ACTIONS.includes(action)) {
+      const cached = lerCache(action, payload);
+      if (cached) {
+        console.warn(`[Cache] Usando dados em cache para: ${action}`);
+        toast(`⚠️ Offline — exibindo dados do último acesso`, 'info');
+        return cached;
+      }
+    }
     toast('Erro na API: ' + e.message, 'error');
     throw e;
   }
@@ -1656,17 +1742,39 @@ function generateDemoTransactions() {
   let idNum = 1;
   for (let m = 0; m < 3; m++) {
     const dt = new Date(now.getFullYear(), now.getMonth() - m, 1);
-    // income
+    // Receitas
     txns.push({ID:`T${idNum++}`,Data:new Date(dt.getFullYear(),dt.getMonth(),5).toISOString(),Descrição:'Salário',Valor:5500,Tipo:'receita',Categoria:'Salário',Conta:'Nubank'});
     if (m<2) txns.push({ID:`T${idNum++}`,Data:new Date(dt.getFullYear(),dt.getMonth(),15).toISOString(),Descrição:'Freelance Design',Valor:1200,Tipo:'receita',Categoria:'Freelance',Conta:'Nubank'});
-    // expenses
+    // Despesas — algumas no débito, algumas nos cartões K1 e K2
     for (let i=0;i<12;i++){
       const cat = cats[i%cats.length];
       const dList = descs[cat];
       const desc = dList[Math.floor(Math.random()*dList.length)];
-      const val = (Math.random()*200+20).toFixed(2);
+      const val = parseFloat((Math.random()*180+20).toFixed(2));
       const day = Math.floor(Math.random()*27)+1;
-      txns.push({ID:`T${idNum++}`,Data:new Date(dt.getFullYear(),dt.getMonth(),day).toISOString(),Descrição:desc,Valor:parseFloat(val),Tipo:'despesa',Categoria:cat,Conta:'Nubank'});
+      // i%3===0 → cartão K1 (Nubank), i%5===0 → cartão K2 (Itaú Visa), resto → débito
+      const cartaoId = i%3===0 ? 'K1' : i%5===0 ? 'K2' : '';
+      txns.push({
+        ID:`T${idNum++}`,
+        Data:new Date(dt.getFullYear(),dt.getMonth(),day).toISOString(),
+        Descrição:desc, Valor:val, Tipo:'despesa', Categoria:cat,
+        Conta: cartaoId ? '' : 'Nubank',
+        'Cartão': cartaoId
+      });
+    }
+    // No mês mais recente: pagamento da fatura do K1 (Nubank) — K2 fica em aberto
+    if (m === 0) {
+      txns.push({
+        ID:`T${idNum++}`,
+        Data:new Date(dt.getFullYear(),dt.getMonth(),22).toISOString(),
+        Descrição:'Pagamento Fatura Nubank',
+        Valor:620,
+        Tipo:'transferencia',
+        Categoria:'Pagamento Fatura',
+        Conta:'Itaú',
+        DestinoCartao:'K1',
+        destino_cartao:'K1'
+      });
     }
   }
   return txns;
@@ -1728,7 +1836,7 @@ function demoApiCall(action, payload) {
       const totalDiasMes   = new Date(a, m, 0).getDate();
       const mediaDiaria    = diasDecorridos > 0 ? desp / diasDecorridos : 0;
       const projecaoMes    = mediaDiaria * totalDiasMes;
-      return {receitas:rec,despesas:desp,saldo:rec-desp,saldoTotal:22490,totalInvestido:22110,totalDividas:33000,gastosPorCategoria:gpc,ultimasTransacoes:txns.slice(0,10),metas:DEMO.metas,orcamentos:demoApiCall('getOrcamento',{}),historicoMeses:hist,mediaDiaria,projecaoMes,contas:DEMO.contas};
+      return {receitas:rec,despesas:desp,saldo:rec-desp,saldoTotal:22490,totalInvestido:22110,totalDividas:33000,gastosPorCategoria:gpc,ultimasTransacoes:txns.slice(0,10),metas:DEMO.metas,orcamentos:demoApiCall('getOrcamento',{}),historicoMeses:hist,mediaDiaria,projecaoMes,contas:DEMO.contas,todasTransacoes:DEMO.transacoes};
     }
     case 'addTransacao': {
       // Mapeia todos os campos incluindo DestinoCartao (para transferências de pagamento de fatura)
@@ -2067,6 +2175,7 @@ async function loadTransacoes() {
 
 async function loadDashboard() {
   STATE.dashboard = await apiCall('getDashboard', { mes: STATE.mes, ano: STATE.ano });
+  if (STATE.dashboard?.todasTransacoes) STATE.todasTransacoes = STATE.dashboard.todasTransacoes;
   renderDashboard();
 }
 
@@ -2114,6 +2223,9 @@ function renderDashboard() {
 
   // Histórico Chart
   renderChartHistorico(d.historicoMeses);
+
+  // Faturas dos Cartões no Dashboard
+  renderDashFaturas();
 
   // Categorias Chart
   renderChartCategorias(d.gastosPorCategoria);
@@ -2237,6 +2349,106 @@ function chartOptions() {
 }
 function chartOptionsDoughnut() { return { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'rgba(255,255,255,0.7)', font:{size:12} } } } }; }
 function destroyChart(id) { if (STATE.charts[id]) { STATE.charts[id].destroy(); delete STATE.charts[id]; } }
+
+// ============================================================
+// DASHBOARD — FATURAS DOS CARTÕES
+// ============================================================
+function renderDashFaturas() {
+  const el = document.getElementById('dashFaturas');
+  if (!el || !STATE.cartoes.length) { if (el) el.innerHTML = ''; return; }
+
+  const mes = STATE.mes, ano = STATE.ano;
+  const mAbrev = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][mes - 1];
+
+  // Fonte de transações: prefere todas, cai no mês atual
+  const fonte = STATE.todasTransacoes || STATE.transacoes;
+
+  const faturas = STATE.cartoes
+    .filter(c => c.Ativo !== false)
+    .map(c => {
+      const cId   = String(c.ID   || c.id   || '').toLowerCase();
+      const cNome = String(c.Nome || c.nome || '').toLowerCase().trim();
+
+      // Compras do mês
+      const comprasMes = STATE.transacoes.filter(t => {
+        if (t.Tipo !== 'despesa') return false;
+        const ct = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').toLowerCase().trim();
+        return ct === cId || ct === cNome;
+      });
+
+      const totalMes = comprasMes.reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+
+      // Verifica pagamento da fatura no mês: transferência cujo destino é este cartão
+      const pago = fonte.some(t => {
+        if (t.Tipo !== 'transferencia') return false;
+        const d = new Date(t.Data);
+        if (d.getMonth() + 1 !== mes || d.getFullYear() !== ano) return false;
+        const dest = String(t.DestinoCartao || t.destino_cartao || t.destinoCartao || t.Cartão || t.cartao || '').toLowerCase().trim();
+        return dest === cId || dest === cNome;
+      });
+
+      const limite   = parseFloat(c.Limite || c.limite || 0);
+      const venc     = c.Dia_Vencimento || c.dia_vencimento || '–';
+      const cor      = c.Cor || c.cor || '#6C5CE7';
+      const perc     = limite > 0 ? Math.min(100, (totalMes / limite) * 100) : 0;
+      const barCor   = perc >= 80 ? 'var(--red)' : perc >= 50 ? 'var(--yellow)' : 'var(--green)';
+
+      return { c, totalMes, pago, limite, venc, cor, barCor, perc, comprasCount: comprasMes.length };
+    })
+    .filter(f => f.totalMes > 0 || f.comprasCount === 0); // mostra mesmo zerado
+
+  if (!faturas.length) { el.innerHTML = ''; return; }
+
+  const totalGeral = faturas.reduce((s, f) => s + f.totalMes, 0);
+  const totalPago  = faturas.filter(f => f.pago).reduce((s, f) => s + f.totalMes, 0);
+  const totalAberto= totalGeral - totalPago;
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header" style="flex-wrap:wrap;gap:10px">
+        <div class="card-title"><span class="card-title-icon">💳</span>Faturas dos Cartões — ${mAbrev}/${ano}</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          ${totalPago > 0 ? `<span style="font-size:12px;background:rgba(0,229,160,.12);color:var(--green);padding:3px 10px;border-radius:20px;font-weight:700">✅ Pago: ${fmt(totalPago)}</span>` : ''}
+          ${totalAberto > 0 ? `<span style="font-size:12px;background:rgba(255,77,109,.12);color:var(--red);padding:3px 10px;border-radius:20px;font-weight:700">⚠️ Em aberto: ${fmt(totalAberto)}</span>` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="showPage('cartoes')">Ver cartões →</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+        ${faturas.map(({ c, totalMes, pago, limite, venc, cor, barCor, perc, comprasCount }) => {
+          const statusBg    = pago ? 'rgba(0,229,160,.12)' : 'rgba(255,77,109,.1)';
+          const statusColor = pago ? 'var(--green)' : 'var(--red)';
+          const statusIcon  = pago ? '✅' : '🔴';
+          const statusText  = pago ? 'Pago' : 'Em Aberto';
+          return `
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:14px;position:relative;overflow:hidden;transition:all .2s;cursor:pointer"
+               onclick="showPage('cartoes')"
+               onmouseover="this.style.borderColor='var(--border2)'"
+               onmouseout="this.style.borderColor='var(--border)'">
+            <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${cor};border-radius:var(--radius2) 0 0 var(--radius2)"></div>
+            <div style="padding-left:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <span style="font-size:14px;font-weight:700">${c.Nome || c.nome}</span>
+                <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${statusBg};color:${statusColor}">${statusIcon} ${statusText}</span>
+              </div>
+              <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:${pago ? 'var(--green)' : 'var(--red)'};margin-bottom:8px">${fmt(totalMes)}</div>
+              <div style="height:4px;background:var(--border);border-radius:4px;margin-bottom:6px;overflow:hidden">
+                <div style="height:100%;border-radius:4px;background:${barCor};width:${perc}%;transition:width .5s"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2)">
+                <span>${comprasCount} compra(s)</span>
+                <span>Vence dia <strong style="color:var(--text)">${venc}</strong></span>
+              </div>
+              ${!pago && totalMes > 0 ? `
+              <button onclick="event.stopPropagation();abrirPagamentoFatura(${STATE.cartoes.indexOf(c)})"
+                style="margin-top:10px;width:100%;padding:7px;border-radius:8px;border:1px solid rgba(77,138,255,.3);background:rgba(77,138,255,.1);color:var(--blue);font-size:12px;font-weight:600;cursor:pointer">
+                🔄 Pagar Fatura
+              </button>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
 
 // ============================================================
 // TRANSAÇÕES — renderização com suporte a 3 tipos:
@@ -4014,6 +4226,24 @@ async function loadConfigPage() {
   document.getElementById('cfgMoeda').value  = STATE.moeda        || 'BRL';
   document.getElementById('cfgUrl').value    = STATE.apiUrl       || '';
   document.getElementById('cfgAlerta').value = STATE.alertaOrcamento || 80;
+
+  // Info do cache
+  const infoEl = document.getElementById('cacheInfo');
+  if (infoEl) {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY) || '{}';
+      const cache = JSON.parse(raw);
+      const entradas = Object.keys(cache).length;
+      const tamanho  = (new TextEncoder().encode(raw).length / 1024).toFixed(1);
+      if (entradas === 0) {
+        infoEl.innerHTML = '⚪ Nenhum dado em cache ainda.';
+      } else {
+        const ultima = Object.values(cache).map(v => v.ts || 0).sort((a,b)=>b-a)[0];
+        const dt = ultima ? new Date(ultima).toLocaleString('pt-BR') : '–';
+        infoEl.innerHTML = `✅ <strong>${entradas}</strong> entradas salvas · ${tamanho} KB · Última sync: <strong>${dt}</strong>`;
+      }
+    } catch(e) { infoEl.innerHTML = 'Não foi possível ler o cache.'; }
+  }
 }
 
 function salvarConfig() {
