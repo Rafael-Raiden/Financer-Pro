@@ -903,13 +903,46 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       <div class="modal-title" id="modalTransTitulo">Nova Transação</div>
       <button class="modal-close" onclick="closeModal('modalTransacao')">✕</button>
     </div>
-    <div class="tipo-selector">
-      <button class="tipo-btn active-despesa" id="btnDespesa"      onclick="setTipo('despesa')">⬇️ Despesa</button>
-      <button class="tipo-btn"               id="btnReceita"      onclick="setTipo('receita')">⬆️ Receita</button>
-      <button class="tipo-btn"               id="btnTransferencia" onclick="setTipo('transferencia')">🔄 Transferência</button>
+    <div class="tipo-selector" style="grid-template-columns:1fr 1fr">
+      <button class="tipo-btn active-despesa" id="btnDespesa"           onclick="setTipo('despesa')">⬇️ Despesa</button>
+      <button class="tipo-btn"               id="btnReceita"           onclick="setTipo('receita')">⬆️ Receita</button>
+      <button class="tipo-btn"               id="btnTransferenciaConta" onclick="setTipo('transferencia_conta')">🔄 Entre Contas</button>
+      <button class="tipo-btn"               id="btnTransferencia"      onclick="setTipo('transferencia')">💳 Pagar Fatura</button>
     </div>
     <input type="hidden" id="transTipo" value="despesa">
     <input type="hidden" id="transId">
+
+    <!-- BLOCO TRANSFERÊNCIA ENTRE CONTAS — visível apenas quando tipo = transferencia_conta -->
+    <div id="blocoTransferenciaConta" style="display:none;background:var(--bg3);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid var(--green)">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:10px">🔄 Transferência entre Contas</div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Conta Origem *</label>
+          <select class="form-input" id="transfContaOrigem" onchange="validarContasTransf()"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Conta Destino *</label>
+          <select class="form-input" id="transfContaDestino" onchange="validarContasTransf()"></select>
+        </div>
+      </div>
+      <!-- Preview da operação -->
+      <div id="previewTransfConta" style="display:none;margin-top:10px;padding:10px 14px;background:var(--card);border-radius:8px;font-size:13px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="previewOrigem" style="font-weight:700;color:var(--red)"></span>
+            <span style="color:var(--text2);font-size:18px">→</span>
+            <span id="previewDestino" style="font-weight:700;color:var(--green)"></span>
+          </div>
+          <span style="font-size:11px;color:var(--text2)">Saldo não muda nos totais</span>
+        </div>
+      </div>
+      <div id="erroContasIguais" style="display:none;margin-top:8px;padding:7px 12px;background:rgba(255,77,109,.1);border-radius:8px;font-size:12px;color:var(--red)">
+        ⚠️ Conta origem e destino devem ser diferentes.
+      </div>
+      <div style="margin-top:10px;padding:8px 12px;background:var(--card);border-radius:8px;font-size:12px;color:var(--text2)">
+        💡 O valor <strong style="color:var(--green)">sai da conta origem</strong> e <strong style="color:var(--green)">entra na conta destino</strong>. Não é receita nem despesa.
+      </div>
+    </div>
 
     <!-- BLOCO TRANSFERÊNCIA (pagamento de fatura) — visível apenas quando tipo = transferencia -->
     <div id="blocoTransferencia" style="display:none;background:var(--bg3);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid var(--blue)">
@@ -935,7 +968,8 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       </div>
       <div class="form-group">
         <label class="form-label">Valor *</label>
-        <input class="form-input" id="transValor" type="number" step="0.01" placeholder="0,00">
+        <input class="form-input" id="transValor" type="number" step="0.01" placeholder="0,00"
+               oninput="if(document.getElementById('transTipo').value==='transferencia_conta') validarContasTransf()">
       </div>
     </div>
     <div class="form-group">
@@ -1775,6 +1809,20 @@ function generateDemoTransactions() {
         DestinoCartao:'K1',
         destino_cartao:'K1'
       });
+      // Transferência entre contas — move da Poupança para o Nubank
+      txns.push({
+        ID:`T${idNum++}`,
+        Data:new Date(dt.getFullYear(),dt.getMonth(),10).toISOString(),
+        Descrição:'Transferência Poupança → Nubank',
+        Valor:1500,
+        Tipo:'transferencia_conta',
+        Categoria:'',
+        Conta:'CT3',
+        Conta_Origem:'CT3',
+        Conta_Destino:'CT1',
+        conta_origem:'CT3',
+        conta_destino:'CT1'
+      });
     }
   }
   return txns;
@@ -1811,10 +1859,11 @@ function demoApiCall(action, payload) {
       const txns = DEMO.transacoes.filter(x => {
         const d = new Date(x.Data); return d.getMonth()+1==m && d.getFullYear()==a;
       });
-      // Apenas receitas e despesas reais entram nos totais — transferências são ignoradas
+      // Apenas receitas e despesas reais entram nos totais
+      // transferencia e transferencia_conta são completamente ignoradas
       const rec  = txns.filter(x => x.Tipo === 'receita').reduce((s,x) => s + x.Valor, 0);
       const desp = txns.filter(x => x.Tipo === 'despesa').reduce((s,x) => s + x.Valor, 0);
-      // Gastos por categoria excluem transferências e compras de cartão que já têm fatura separada
+      // Gastos por categoria excluem qualquer tipo de transferência
       const gpc = {};
       txns.filter(x => x.Tipo === 'despesa').forEach(x => {
         gpc[x.Categoria] = (gpc[x.Categoria] || 0) + x.Valor;
@@ -1828,6 +1877,7 @@ function demoApiCall(action, payload) {
           mes: mm, ano: aa,
           receitas:  tt.filter(x => x.Tipo === 'receita').reduce((s,x) => s+x.Valor, 0),
           despesas:  tt.filter(x => x.Tipo === 'despesa').reduce((s,x) => s+x.Valor, 0)
+          // transferencia e transferencia_conta: NÃO incluídas
         });
       }
       const hoje = new Date();
@@ -1850,9 +1900,23 @@ function demoApiCall(action, payload) {
         Categoria: payload.payload.categoria || '',
         Conta: payload.payload.conta || '',
         Cartão: payload.payload.cartao || '',
-        DestinoCartao: payload.payload.destino_cartao || ''
+        DestinoCartao: payload.payload.destino_cartao || '',
+        Conta_Origem:  payload.payload.conta_origem  || '',
+        Conta_Destino: payload.payload.conta_destino || '',
+        conta_origem:  payload.payload.conta_origem  || '',
+        conta_destino: payload.payload.conta_destino || '',
       };
       DEMO.transacoes.unshift(t);
+
+      // Se for transferência entre contas, atualiza o saldo das contas no demo
+      // Os values do select são os NOMES das contas (ver populateContaSelect)
+      if (t.Tipo === 'transferencia_conta' && t.Conta_Origem && t.Conta_Destino) {
+        const cOrig = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta_Origem || String(c.ID||c.id) === String(t.Conta_Origem));
+        const cDest = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta_Destino || String(c.ID||c.id) === String(t.Conta_Destino));
+        if (cOrig)  cOrig.Saldo_Atual  = parseFloat(cOrig.Saldo_Atual  || 0) - t.Valor;
+        if (cDest)  cDest.Saldo_Atual  = parseFloat(cDest.Saldo_Atual  || 0) + t.Valor;
+      }
+
       return {success:true, id:t.ID};
     }
     // Registra pagamento de fatura como transferência
@@ -1874,7 +1938,19 @@ function demoApiCall(action, payload) {
     }
     case 'deleteTransacao': {
       const idx = DEMO.transacoes.findIndex(x=>x.ID==payload.id);
-      if(idx>-1) DEMO.transacoes.splice(idx,1); return {success:true};
+      if (idx > -1) {
+        const t = DEMO.transacoes[idx];
+        // Se for transferência entre contas, reverte o saldo (busca por nome OU ID)
+        if (t.Tipo === 'transferencia_conta') {
+          const valor = parseFloat(t.Valor || 0);
+          const cOrigem  = DEMO.contas.find(c => (c.Nome||c.nome) === String(t.Conta_Origem||t.conta_origem||'') || String(c.ID||c.id) === String(t.Conta_Origem||t.conta_origem||''));
+          const cDestino = DEMO.contas.find(c => (c.Nome||c.nome) === String(t.Conta_Destino||t.conta_destino||'') || String(c.ID||c.id) === String(t.Conta_Destino||t.conta_destino||''));
+          if (cOrigem)  cOrigem.Saldo_Atual  = parseFloat(cOrigem.Saldo_Atual  || 0) + valor;
+          if (cDestino) cDestino.Saldo_Atual = parseFloat(cDestino.Saldo_Atual || 0) - valor;
+        }
+        DEMO.transacoes.splice(idx, 1);
+      }
+      return {success:true};
     }
     case 'addCartao': {const c={...payload.payload,ID:'K'+Date.now(),Limite:parseFloat(payload.payload.limite||0),Ativo:true};DEMO.cartoes.push(c);return{success:true,id:c.ID};}
     case 'deleteCartao': {const i=DEMO.cartoes.findIndex(x=>x.ID==payload.id);if(i>-1)DEMO.cartoes.splice(i,1);return{success:true};}
@@ -2378,7 +2454,8 @@ function renderDashFaturas() {
 
       const totalMes = comprasMes.reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
 
-      // Verifica pagamento da fatura no mês: transferência cujo destino é este cartão
+      // Verifica pagamento da fatura no mês: apenas tipo 'transferencia' (pagamento de fatura)
+      // 'transferencia_conta' é transferência entre contas — NÃO quita fatura
       const pago = fonte.some(t => {
         if (t.Tipo !== 'transferencia') return false;
         const d = new Date(t.Data);
@@ -2495,6 +2572,16 @@ function renderTransItem(t, showActions=false) {
     classeValor = 'positivo';
     sinal      = '+';
     badge      = '';
+  } else if (tipo === 'transferencia_conta') {
+    // Transferência entre contas — totalmente neutra
+    const nomeOrigem  = String(t.Conta_Origem  || t.conta_origem  || t.ContaOrigem  || t.Conta || '');
+    const nomeDestino = String(t.Conta_Destino || t.conta_destino || t.ContaDestino || '');
+    iconeBg    = 'rgba(0,229,160,.1)';
+    icone      = '🔄';
+    classeValor = '';
+    sinal      = '';
+    badge = `<span style="background:rgba(0,229,160,.12);color:var(--green);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">
+      ${nomeOrigem}${nomeDestino ? ' → '+nomeDestino : ''}</span>`;
   } else if (tipo === 'transferencia') {
     iconeBg    = 'rgba(77,138,255,.12)';
     icone      = '🔄';
@@ -2502,7 +2589,7 @@ function renderTransItem(t, showActions=false) {
     sinal      = '';
     // Mostra para qual cartão foi o pagamento
     badge = `<span style="background:rgba(77,138,255,.15);color:var(--blue);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">
-      🔄 Pagamento Fatura${destNome ? ' · '+destNome : ''}</span>`;
+      💳 Pagamento Fatura${destNome ? ' · '+destNome : ''}</span>`;
   } else {
     // despesa — comum ou compra no cartão
     iconeBg    = isCartao ? 'rgba(168,85,247,.12)' : (cat ? cat.Cor+'22' : 'rgba(255,77,109,.1)');
@@ -2514,15 +2601,16 @@ function renderTransItem(t, showActions=false) {
       : '';
   }
 
-  const estiloValor = tipo === 'transferencia' ? 'style="color:var(--blue)"' : '';
+  const estiloValor = (tipo === 'transferencia' || tipo === 'transferencia_conta')
+    ? `style="color:${tipo === 'transferencia_conta' ? 'var(--green)' : 'var(--blue)'}"` : '';
 
   return `<div class="trans-item">
     <div class="trans-icon" style="background:${iconeBg}">${icone}</div>
     <div class="trans-info">
       <div class="trans-desc">${t.Descrição||t.descricao||t.Descricao||'Sem descrição'}</div>
       <div class="trans-cat">
-        ${tipo !== 'transferencia' ? (t.Categoria||'') : ''}
-        ${t.Conta ? '· '+t.Conta : ''}
+        ${tipo === 'transferencia_conta' ? '' : tipo !== 'transferencia' ? (t.Categoria||'') : ''}
+        ${tipo === 'transferencia_conta' ? '' : t.Conta ? '· '+t.Conta : ''}
         ${badge}
       </div>
     </div>
@@ -2549,12 +2637,19 @@ function renderTransacoes() {
   let list = [...STATE.transacoes];
 
   if (STATE.transFilter !== 'todos') {
-    list = list.filter(t => (t.Tipo||'despesa') === STATE.transFilter);
+    if (STATE.transFilter === 'transferencia') {
+      // Agrupa as duas variantes de transferência no mesmo filtro
+      list = list.filter(t => t.Tipo === 'transferencia' || t.Tipo === 'transferencia_conta');
+    } else {
+      list = list.filter(t => (t.Tipo||'despesa') === STATE.transFilter);
+    }
   }
   if (search) {
     list = list.filter(t =>
       (t.Descrição||t.descricao||'').toLowerCase().includes(search) ||
-      (t.Categoria||'').toLowerCase().includes(search)
+      (t.Categoria||'').toLowerCase().includes(search) ||
+      (t.Conta_Origem||t.conta_origem||'').toLowerCase().includes(search) ||
+      (t.Conta_Destino||t.conta_destino||'').toLowerCase().includes(search)
     );
   }
 
@@ -2569,39 +2664,48 @@ function renderTransacoes() {
 
 /**
  * setTipo — define o tipo da transação e atualiza a UI do modal.
- * Tipos suportados: 'despesa' | 'receita' | 'transferencia'
- *
- * Transferência é usada para pagamento de fatura de cartão:
- *   → sai da conta, mas NÃO conta como despesa no dashboard.
+ * Tipos suportados:
+ *   'despesa'            → saída de dinheiro (vermelho, -)
+ *   'receita'            → entrada de dinheiro (verde, +)
+ *   'transferencia_conta'→ move saldo entre contas (neutro, não afeta dashboard)
+ *   'transferencia'      → pagamento de fatura de cartão (azul, neutro)
  */
 function setTipo(tipo) {
   document.getElementById('transTipo').value = tipo;
 
-  // Botões de seleção de tipo
-  document.getElementById('btnDespesa').className       = 'tipo-btn' + (tipo === 'despesa'       ? ' active-despesa'       : '');
-  document.getElementById('btnReceita').className       = 'tipo-btn' + (tipo === 'receita'       ? ' active-receita'       : '');
-  document.getElementById('btnTransferencia').className = 'tipo-btn' + (tipo === 'transferencia' ? ' active-transferencia' : '');
+  // Botões — limpa todos e ativa o correto
+  document.getElementById('btnDespesa').className            = 'tipo-btn' + (tipo === 'despesa'             ? ' active-despesa'       : '');
+  document.getElementById('btnReceita').className            = 'tipo-btn' + (tipo === 'receita'             ? ' active-receita'       : '');
+  document.getElementById('btnTransferenciaConta').className = 'tipo-btn' + (tipo === 'transferencia_conta' ? ' active-transferencia' : '');
+  document.getElementById('btnTransferencia').className      = 'tipo-btn' + (tipo === 'transferencia'       ? ' active-transferencia' : '');
 
-  const isTransf = tipo === 'transferencia';
+  const isTransfConta = tipo === 'transferencia_conta';
+  const isTransfFatura = tipo === 'transferencia';
+  const isQualquerTransf = isTransfConta || isTransfFatura;
 
-  // Campos comuns — ficam ocultos na transferência (conta, cartão, categoria, projeto usam campos próprios)
+  // Campos comuns — ocultos em qualquer transferência
   const camposComuns = ['transCat', 'transConta', 'transCartao', 'transProjeto'];
   camposComuns.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.closest('.form-group').style.display = isTransf ? 'none' : '';
+    if (el) el.closest('.form-group').style.display = isQualquerTransf ? 'none' : '';
   });
 
-  // Bloco de transferência (pagamento de fatura)
-  document.getElementById('blocoTransferencia').style.display = isTransf ? 'block' : 'none';
+  // Blocos exclusivos
+  document.getElementById('blocoTransferenciaConta').style.display = isTransfConta  ? 'block' : 'none';
+  document.getElementById('blocoTransferencia').style.display      = isTransfFatura ? 'block' : 'none';
+  document.getElementById('blocoParcelamento').style.display       = 'none';
 
-  if (isTransf) {
-    // Popula selects de origem e destino da transferência
+  if (isTransfConta) {
+    // Popula selects de conta origem e destino
+    populateContaSelect('transfContaOrigem');
+    populateContaSelect('transfContaDestino');
+    validarContasTransf();
+  } else if (isTransfFatura) {
+    // Popula selects de conta devedora e cartão
     populateContaSelect('transfOrigemConta');
     populateCartaoSelectTransf('transfDestinoCartao');
-    // Oculta parcelamento
-    document.getElementById('blocoParcelamento').style.display = 'none';
   } else {
-    // Comportamento original: popula categorias e toggle parcelamento
+    // despesa/receita — popula categorias e controla parcelamento
     populateCatSelect('transCat', tipo);
     if (typeof toggleParcelamento === 'function') toggleParcelamento();
   }
@@ -2618,6 +2722,32 @@ function populateCartaoSelectTransf(selectId) {
       const val = c.ID || c.id;
       return `<option value="${val}">${c.Nome || c.nome}</option>`;
     }).join('');
+}
+
+/**
+ * Valida que conta origem ≠ conta destino e exibe preview da transferência.
+ */
+function validarContasTransf() {
+  const origem  = document.getElementById('transfContaOrigem');
+  const destino = document.getElementById('transfContaDestino');
+  const erroEl  = document.getElementById('erroContasIguais');
+  const prevEl  = document.getElementById('previewTransfConta');
+  if (!origem || !destino) return;
+
+  const iguais = origem.value && destino.value && origem.value === destino.value;
+  erroEl.style.display = iguais ? 'block' : 'none';
+
+  const oNome = origem.options[origem.selectedIndex]?.text || '';
+  const dNome = destino.options[destino.selectedIndex]?.text || '';
+  const valor = parseFloat(document.getElementById('transValor')?.value) || 0;
+
+  if (origem.value && destino.value && !iguais) {
+    prevEl.style.display = 'block';
+    document.getElementById('previewOrigem').textContent  = `${oNome} −${fmt(valor)}`;
+    document.getElementById('previewDestino').textContent = `${dNome} +${fmt(valor)}`;
+  } else {
+    prevEl.style.display = 'none';
+  }
 }
 
 function openModalTransacao() {
@@ -2637,6 +2767,9 @@ function openModalTransacao() {
     const el = document.getElementById(id);
     if (el) el.closest('.form-group').style.display = '';
   });
+  // Garante que blocos de transferência fiquem ocultos
+  document.getElementById('blocoTransferenciaConta').style.display = 'none';
+  document.getElementById('blocoTransferencia').style.display      = 'none';
   populateContaSelect('transConta');
   populateCartaoSelect('transCartao');
   setTipo('despesa');
@@ -2663,9 +2796,18 @@ function editarTransacao(id, e) {
     const el = document.getElementById(id2);
     if (el) el.closest('.form-group').style.display = '';
   });
+  // Garante que ambos os blocos de transferência estão ocultos antes do setTipo
+  document.getElementById('blocoTransferenciaConta').style.display = 'none';
+  document.getElementById('blocoTransferencia').style.display      = 'none';
 
   const tipo = t.Tipo || 'despesa';
-  if (tipo === 'transferencia') {
+  if (tipo === 'transferencia_conta') {
+    // Transferência entre contas
+    populateContaSelect('transfContaOrigem', t.Conta_Origem || t.conta_origem || t.ContaOrigem || '');
+    populateContaSelect('transfContaDestino', t.Conta_Destino || t.conta_destino || t.ContaDestino || '');
+    setTipo('transferencia_conta');
+    setTimeout(() => validarContasTransf(), 50);
+  } else if (tipo === 'transferencia') {
     // Preenche campos exclusivos de transferência
     populateContaSelect('transfOrigemConta', t.Origem_Conta || t.origem_conta || t.Conta || '');
     populateCartaoSelectTransf('transfDestinoCartao');
@@ -2687,9 +2829,40 @@ function editarTransacao(id, e) {
 async function deletarTransacao(id, e) {
   e.stopPropagation();
   if (!confirm('Excluir esta transação?')) return;
+
+  // Verifica se é transferência entre contas ANTES de deletar
+  // para poder reverter o saldo da conta destino no GAS
+  const t = STATE.transacoes.find(x => x.ID == id);
+  const isTrConta = t && (t.Tipo === 'transferencia_conta');
+
   await apiCall('deleteTransacao', { id });
+
+  // O GAS deleteTransacao() já reverte o débito da origem via atualizarSaldoConta()
+  // Mas NÃO reverte o crédito da destino — fazemos isso manualmente
+  if (isTrConta && !STATE.isDemo) {
+    const valor       = parseFloat(t.Valor || 0);
+    const nomeDestino = t.Conta_Destino || t.conta_destino || '';
+    const cDest = STATE.contas.find(c => (c.Nome||c.nome) === nomeDestino || String(c.ID||c.id) === nomeDestino);
+    if (cDest) {
+      const novoSaldo = parseFloat(cDest.Saldo_Atual || 0) - valor;
+      await apiCall('updateConta', {
+        payload: {
+          ID:            cDest.ID    || cDest.id,
+          Nome:          cDest.Nome  || cDest.nome,
+          Tipo:          cDest.Tipo  || cDest.tipo  || 'corrente',
+          Saldo_Inicial: parseFloat(cDest.Saldo_Inicial || cDest.saldo_inicial || 0),
+          Saldo_Atual:   novoSaldo,
+          Banco:         cDest.Banco || cDest.banco || '',
+          Cor:           cDest.Cor   || cDest.cor   || '#00B894',
+          Ativa:         true
+        }
+      });
+    }
+  }
+
   toast('Transação excluída!');
   loadTransacoes();
+  loadContas();
   if (document.getElementById('page-dashboard').classList.contains('active')) loadDashboard();
 }
 
@@ -2744,6 +2917,89 @@ async function salvarTransacao() {
   // Envia com T12:00:00 para evitar bug de fuso UTC→dia anterior no Apps Script
   const dataSafe       = dataRaw ? dataRaw + 'T12:00:00' : dataRaw;
   const valorTotal     = parseFloat(document.getElementById('transValor').value);
+
+  // ── TRANSFERÊNCIA ENTRE CONTAS ─────────────────────────────────────────────
+  // Move saldo de conta A → conta B. NÃO é receita nem despesa.
+  // Não afeta dashboard de receitas/despesas de nenhuma forma.
+  if (tipo === 'transferencia_conta') {
+    const contaOrigem  = document.getElementById('transfContaOrigem').value;
+    const contaDestino = document.getElementById('transfContaDestino').value;
+    const desc         = document.getElementById('transDesc').value || 'Transferência entre contas';
+
+    if (!valorTotal || valorTotal <= 0) {
+      toast('Informe um valor maior que zero', 'error'); return;
+    }
+    if (!contaOrigem || !contaDestino) {
+      toast('Selecione a conta origem e a conta destino', 'error'); return;
+    }
+    if (contaOrigem === contaDestino) {
+      toast('Conta origem e destino devem ser diferentes', 'error'); return;
+    }
+
+    // Resolve nomes para exibição
+    // populateContaSelect usa o NOME como value — contaOrigem/contaDestino já são nomes
+    const cOrigObj = STATE.contas.find(c => (c.Nome||c.nome) === contaOrigem);
+    const cDestObj = STATE.contas.find(c => (c.Nome||c.nome) === contaDestino);
+    const nomeOrigem  = cOrigObj ? (cOrigObj.Nome||cOrigObj.nome) : contaOrigem;
+    const nomeDestino = cDestObj ? (cDestObj.Nome||cDestObj.nome) : contaDestino;
+
+    const payload = {
+      tipo:          'transferencia_conta',
+      data:          dataSafe,
+      valor:         valorTotal,
+      descricao:     desc || `Transferência: ${nomeOrigem} → ${nomeDestino}`,
+      conta_origem:  contaOrigem,
+      conta_destino: contaDestino,
+      // 'conta' = origem — o GAS usa este campo para debitar via atualizarSaldoConta()
+      conta:         contaOrigem,
+      observacoes:   document.getElementById('transObs').value,
+    };
+
+    if (id) {
+      // Edição: só atualiza a transação; saldo já foi ajustado antes
+      await apiCall('updateTransacao', { payload: { ...payload, ID: id } });
+      toast('Transferência atualizada! ✅');
+    } else {
+      // ── NOVA TRANSFERÊNCIA ─────────────────────────────────────────────────
+      // O GAS addTransacao() chama atualizarSaldoConta(p.conta, p.tipo, valor).
+      // Como p.tipo === 'transferencia_conta' ≠ 'receita', ele DEBITA a conta origem ✓
+      // Mas ele NÃO credita a conta destino — faremos isso manualmente com updateConta().
+      await apiCall('addTransacao', { payload });
+
+      // ── CREDITAR CONTA DESTINO via updateConta ─────────────────────────────
+      // O GAS updateConta() sobrescreve Saldo_Atual diretamente na planilha ✓
+      if (cDestObj) {
+        const novoSaldoDest = parseFloat(cDestObj.Saldo_Atual || 0) + valorTotal;
+        await apiCall('updateConta', {
+          payload: {
+            ID:            cDestObj.ID    || cDestObj.id,
+            Nome:          cDestObj.Nome  || cDestObj.nome,
+            Tipo:          cDestObj.Tipo  || cDestObj.tipo  || 'corrente',
+            Saldo_Inicial: parseFloat(cDestObj.Saldo_Inicial || cDestObj.saldo_inicial || 0),
+            Saldo_Atual:   novoSaldoDest,
+            Banco:         cDestObj.Banco || cDestObj.banco || '',
+            Cor:           cDestObj.Cor   || cDestObj.cor   || '#00B894',
+            Ativa:         true
+          }
+        });
+        // Atualiza STATE local imediatamente
+        cDestObj.Saldo_Atual = novoSaldoDest;
+      }
+
+      // Atualiza STATE da origem também (o GAS já debitou no servidor)
+      if (cOrigObj) {
+        cOrigObj.Saldo_Atual = parseFloat(cOrigObj.Saldo_Atual || 0) - valorTotal;
+      }
+
+      toast(`🔄 ${fmt(valorTotal)} transferido: ${nomeOrigem} → ${nomeDestino} ✅`);
+    }
+
+    closeModal('modalTransacao');
+    await Promise.all([loadContas(), loadTransacoes()]);
+    loadDashboard();
+    if (document.getElementById('page-contas').classList.contains('active')) renderContas();
+    return;
+  }
 
   // ── TRANSFERÊNCIA (pagamento de fatura) ────────────────────────────────────
   // Transferência NÃO é despesa → não afeta o dashboard de despesas.
