@@ -2254,7 +2254,16 @@ async function loadTransacoes() {
 }
 
 async function loadDashboard() {
-  STATE.dashboard = await apiCall('getDashboard', { mes: STATE.mes, ano: STATE.ano });
+  // Carrega dashboard E transações do mesmo mês em paralelo.
+  // STATE.transacoes precisa estar atualizado antes de renderDashboard()
+  // porque o card "Despesas" e o gráfico de categorias são calculados localmente
+  // a partir das transações — se o mês mudar sem recarregar as transações,
+  // os valores ficam desatualizados.
+  const [dashboard] = await Promise.all([
+    apiCall('getDashboard', { mes: STATE.mes, ano: STATE.ano }),
+    apiCall('getTransacoes', { mes: STATE.mes, ano: STATE.ano }).then(t => { STATE.transacoes = t; })
+  ]);
+  STATE.dashboard = dashboard;
   if (STATE.dashboard?.todasTransacoes) STATE.todasTransacoes = STATE.dashboard.todasTransacoes;
   renderDashboard();
 }
@@ -2277,15 +2286,27 @@ function renderDashboard() {
   const d = STATE.dashboard;
   if (!d) return;
 
-  // Calcula investimentos do mês localmente (não mistura com despesas no backend)
+  // ── Cálculos locais (fonte única de verdade para despesas e investimentos) ──
+  // totalDespLocal e gpcLocal são calculados juntos para garantir consistência:
+  // o card "Despesas" e o centro do gráfico de categorias usam o mesmo número.
+  const gpcLocal = {};
+  let totalDespLocal = 0;
+  STATE.transacoes.forEach(t => {
+    const tt = t.Tipo || 'despesa';
+    if (tt !== 'despesa') return;                      // exclui transferências e investimentos
+    const val = parseFloat(t.Valor || 0);
+    totalDespLocal += val;
+    const cat = t.Categoria || 'Sem categoria';
+    gpcLocal[cat] = (gpcLocal[cat] || 0) + val;
+  });
+
   const totalInvestMes = STATE.transacoes
     .filter(t => (t.Tipo || '') === 'investimento')
     .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
-  // Despesas reais = apenas tipo 'despesa' (backend pode incluir investimentos)
-  const totalDespLocal = STATE.transacoes
-    .filter(t => (t.Tipo || 'despesa') === 'despesa')
-    .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
-  const despLabel = totalDespLocal > 0 ? totalDespLocal : d.despesas;
+
+  // Se STATE.transacoes ainda não carregou, usa o dado do backend como fallback
+  const despLabel  = totalDespLocal > 0 ? totalDespLocal : d.despesas;
+  const usarLocal  = totalDespLocal > 0 || Object.keys(gpcLocal).length > 0;
 
   // Stats
   document.getElementById('statsGrid').innerHTML = `
@@ -2317,18 +2338,12 @@ function renderDashboard() {
   // Faturas dos Cartões no Dashboard
   renderDashFaturas();
 
-  // Categorias Chart — recalcula localmente para excluir transferências
-  // e não misturar investimentos com despesas comuns
-  const gpcLocal = {};
-  STATE.transacoes.forEach(t => {
-    const tt = t.Tipo || 'despesa';
-    if (tt !== 'despesa') return; // só despesas comuns no gráfico de categorias
-    const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').trim();
-    if (cartaoT) return; // evita duplicação com fatura do cartão
-    const cat = t.Categoria || 'Sem categoria';
-    gpcLocal[cat] = (gpcLocal[cat] || 0) + parseFloat(t.Valor || 0);
-  });
-  renderChartCategorias(Object.keys(gpcLocal).length ? gpcLocal : d.gastosPorCategoria);
+  // Gráfico de categorias — passa o total real como override para garantir que
+  // o centro do gráfico mostre exatamente o mesmo valor do card "Despesas"
+  renderChartCategorias(
+    usarLocal ? gpcLocal : d.gastosPorCategoria,
+    despLabel
+  );
 
   // Transações
   const transEl = document.getElementById('dashTransacoes');
@@ -2394,13 +2409,29 @@ function renderChartHistorico(hist) {
   });
 }
 
-function renderChartCategorias(gpc) {
+/**
+ * Renderiza o gráfico de donut de categorias.
+ * @param {Object} gpc  - { categoria: valor } com TODAS as categorias
+ * @param {number} [overrideTotal] - total real de despesas (usado no centro do gráfico
+ *   e nos percentuais, garantindo consistência com o card "Despesas" mesmo quando
+ *   o gráfico exibe apenas as top 8 categorias)
+ */
+function renderChartCategorias(gpc, overrideTotal) {
   destroyChart('chartCategorias');
-  const cats = Object.entries(gpc||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const legendEl = document.getElementById('legendCategorias');
-  if (!cats.length) { if(legendEl) legendEl.innerHTML=''; return; }
-  const total = cats.reduce((s,[,v])=>s+v, 0);
-  const cores = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#DDA0DD','#FBBF24','#A29BFE','#F97316'];
+
+  // totalReal = fonte única de verdade para o centro e percentuais
+  const totalReal = overrideTotal ?? Object.values(gpc||{}).reduce((s,v)=>s+v, 0);
+
+  // O gráfico de pizza mostra as top 8; o restante fica em "Outros"
+  const todasEntradas = Object.entries(gpc||{}).sort((a,b)=>b[1]-a[1]);
+  if (!todasEntradas.length) { if(legendEl) legendEl.innerHTML=''; return; }
+
+  const top8  = todasEntradas.slice(0, 8);
+  const resto = todasEntradas.slice(8).reduce((s,[,v])=>s+v, 0);
+  const cats  = resto > 0 ? [...top8, ['Outros', resto]] : top8;
+
+  const cores = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#DDA0DD','#FBBF24','#A29BFE','#F97316','#aaaaaa'];
   const ctx = document.getElementById('chartCategorias').getContext('2d');
   const centerPlugin = {
     id:'cp',
@@ -2408,8 +2439,8 @@ function renderChartCategorias(gpc) {
       const {ctx:c,chartArea:{left,top,right,bottom}}=ch;
       const cx=(left+right)/2,cy=(top+bottom)/2;
       c.save();c.textAlign='center';c.textBaseline='middle';
-      c.fillStyle='rgba(255,255,255,.45)';c.font='10px DM Sans';c.fillText('Total',cx,cy-9);
-      c.fillStyle='#e8e8f0';c.font='bold 13px Syne';c.fillText(fmt(total),cx,cy+8);c.restore();
+      c.fillStyle='rgba(255,255,255,.45)';c.font='10px DM Sans';c.fillText('Despesas',cx,cy-9);
+      c.fillStyle='#e8e8f0';c.font='bold 13px Syne';c.fillText(fmt(totalReal),cx,cy+8);c.restore();
     }
   };
   STATE.charts['chartCategorias'] = new Chart(ctx, {
@@ -2419,20 +2450,22 @@ function renderChartCategorias(gpc) {
       responsive:true,maintainAspectRatio:false,cutout:'68%',
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{label:(c)=>{const p=total>0?(c.raw/total*100).toFixed(1):0;return ` ${c.label}: ${fmt(c.raw)} (${p}%)`;} }}
+        // % calculado sobre o total real (todas as categorias), não apenas top 8
+        tooltip:{callbacks:{label:(c)=>{const p=totalReal>0?(c.raw/totalReal*100).toFixed(1):0;return ` ${c.label}: ${fmt(c.raw)} (${p}%)`;} }}
       }
     },
     plugins:[centerPlugin]
   });
   if (legendEl) {
-    legendEl.innerHTML = cats.map(([nome,val],i)=>{
-      const pct = total>0?(val/total*100).toFixed(1):0;
+    // Legenda mostra todas as categorias (não só top 8)
+    legendEl.innerHTML = todasEntradas.map(([nome,val],i)=>{
+      const pct = totalReal>0?(val/totalReal*100).toFixed(1):0;
       return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-        <div style="width:8px;height:8px;border-radius:2px;flex-shrink:0;background:${cores[i]}"></div>
+        <div style="width:8px;height:8px;border-radius:2px;flex-shrink:0;background:${cores[Math.min(i,8)]}"></div>
         <div style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)">${nome}</div>
         <span style="font-size:11px;font-weight:700;color:var(--text)">${pct}%</span>
         <div style="width:44px;height:4px;background:var(--bg3);border-radius:2px;flex-shrink:0">
-          <div style="height:100%;border-radius:2px;background:${cores[i]};width:${Math.min(100,pct)}%"></div>
+          <div style="height:100%;border-radius:2px;background:${cores[Math.min(i,8)]};width:${Math.min(100,pct)}%"></div>
         </div>
         <span style="font-size:11px;color:var(--text2);width:62px;text-align:right;flex-shrink:0">${fmt(val)}</span>
       </div>`;
