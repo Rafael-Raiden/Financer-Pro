@@ -243,6 +243,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .tipo-btn.active-receita{border-color:var(--green);background:rgba(0,229,160,.1);color:var(--green)}
 .tipo-btn.active-despesa{border-color:var(--red);background:rgba(255,77,109,.1);color:var(--red)}
 .tipo-btn.active-transferencia{border-color:var(--blue);background:rgba(77,138,255,.1);color:var(--blue)}
+.tipo-btn.active-investimento{border-color:var(--purple);background:rgba(168,85,247,.1);color:var(--purple)}
+.trans-val.investimento{color:var(--purple)}
 
 /* PROGRESS */
 .progress-bar{height:8px;background:var(--bg3);border-radius:10px;overflow:hidden;margin:8px 0}
@@ -594,6 +596,7 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
             <button class="tab active" onclick="filterTrans('todos',this)">Todos</button>
             <button class="tab" onclick="filterTrans('receita',this)">Receitas</button>
             <button class="tab" onclick="filterTrans('despesa',this)">Despesas</button>
+            <button class="tab" onclick="filterTrans('investimento',this)">📈 Investimentos</button>
             <button class="tab" onclick="filterTrans('transferencia',this)">🔄 Transferências</button>
           </div>
         </div>
@@ -903,9 +906,10 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       <div class="modal-title" id="modalTransTitulo">Nova Transação</div>
       <button class="modal-close" onclick="closeModal('modalTransacao')">✕</button>
     </div>
-    <div class="tipo-selector" style="grid-template-columns:1fr 1fr">
-      <button class="tipo-btn active-despesa" id="btnDespesa"           onclick="setTipo('despesa')">⬇️ Despesa</button>
-      <button class="tipo-btn"               id="btnReceita"           onclick="setTipo('receita')">⬆️ Receita</button>
+    <div class="tipo-selector" style="grid-template-columns:repeat(3,1fr)">
+      <button class="tipo-btn active-despesa" id="btnDespesa"            onclick="setTipo('despesa')">⬇️ Despesa</button>
+      <button class="tipo-btn"               id="btnReceita"            onclick="setTipo('receita')">⬆️ Receita</button>
+      <button class="tipo-btn"               id="btnInvestimento"       onclick="setTipo('investimento')">📈 Investimento</button>
       <button class="tipo-btn"               id="btnTransferenciaConta" onclick="setTipo('transferencia_conta')">🔄 Entre Contas</button>
       <button class="tipo-btn"               id="btnTransferencia"      onclick="setTipo('transferencia')">💳 Pagar Fatura</button>
     </div>
@@ -2273,6 +2277,16 @@ function renderDashboard() {
   const d = STATE.dashboard;
   if (!d) return;
 
+  // Calcula investimentos do mês localmente (não mistura com despesas no backend)
+  const totalInvestMes = STATE.transacoes
+    .filter(t => (t.Tipo || '') === 'investimento')
+    .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+  // Despesas reais = apenas tipo 'despesa' (backend pode incluir investimentos)
+  const totalDespLocal = STATE.transacoes
+    .filter(t => (t.Tipo || 'despesa') === 'despesa')
+    .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+  const despLabel = totalDespLocal > 0 ? totalDespLocal : d.despesas;
+
   // Stats
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-card green">
@@ -2282,8 +2296,8 @@ function renderDashboard() {
     </div>
     <div class="stat-card red">
       <div class="stat-label">❤️ Despesas</div>
-      <div class="stat-value red">${fmt(d.despesas)}</div>
-      <div class="stat-sub"><span class="stat-trend ${d.despesas < d.receitas ? 'up' : 'down'}">${Math.round(d.despesas/Math.max(d.receitas,1)*100)}%</span> das receitas</div>
+      <div class="stat-value red">${fmt(despLabel)}</div>
+      <div class="stat-sub"><span class="stat-trend ${despLabel < d.receitas ? 'up' : 'down'}">${Math.round(despLabel/Math.max(d.receitas,1)*100)}%</span> das receitas</div>
     </div>
     <div class="stat-card blue">
       <div class="stat-label">💙 Saldo do Mês</div>
@@ -2291,9 +2305,9 @@ function renderDashboard() {
       <div class="stat-sub">Saldo total: <strong>${fmt(d.saldoTotal)}</strong></div>
     </div>
     <div class="stat-card purple">
-      <div class="stat-label">💜 Patrimônio</div>
-      <div class="stat-value purple">${fmt(d.saldoTotal + d.totalInvestido - d.totalDividas)}</div>
-      <div class="stat-sub">Investido: <strong>${fmt(d.totalInvestido)}</strong></div>
+      <div class="stat-label">📈 Investimentos (mês)</div>
+      <div class="stat-value purple">${fmt(totalInvestMes || d.totalInvestido)}</div>
+      <div class="stat-sub">Patrimônio: <strong>${fmt(d.saldoTotal + d.totalInvestido - d.totalDividas)}</strong></div>
     </div>
   `;
 
@@ -2303,8 +2317,18 @@ function renderDashboard() {
   // Faturas dos Cartões no Dashboard
   renderDashFaturas();
 
-  // Categorias Chart
-  renderChartCategorias(d.gastosPorCategoria);
+  // Categorias Chart — recalcula localmente para excluir transferências
+  // e não misturar investimentos com despesas comuns
+  const gpcLocal = {};
+  STATE.transacoes.forEach(t => {
+    const tt = t.Tipo || 'despesa';
+    if (tt !== 'despesa') return; // só despesas comuns no gráfico de categorias
+    const cartaoT = String(t.Cartão || t.cartao || t['Cartão'] || t.Cartao || '').trim();
+    if (cartaoT) return; // evita duplicação com fatura do cartão
+    const cat = t.Categoria || 'Sem categoria';
+    gpcLocal[cat] = (gpcLocal[cat] || 0) + parseFloat(t.Valor || 0);
+  });
+  renderChartCategorias(Object.keys(gpcLocal).length ? gpcLocal : d.gastosPorCategoria);
 
   // Transações
   const transEl = document.getElementById('dashTransacoes');
@@ -2572,6 +2596,13 @@ function renderTransItem(t, showActions=false) {
     classeValor = 'positivo';
     sinal      = '+';
     badge      = '';
+  } else if (tipo === 'investimento') {
+    // Investimento — saída de dinheiro, mas visual distinto (roxo)
+    iconeBg    = 'rgba(168,85,247,.12)';
+    icone      = '📈';
+    classeValor = 'investimento';
+    sinal      = '-';
+    badge      = `<span style="background:rgba(168,85,247,.15);color:var(--purple);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">📈 Investimento</span>`;
   } else if (tipo === 'transferencia_conta') {
     // Transferência entre contas — totalmente neutra
     const nomeOrigem  = String(t.Conta_Origem  || t.conta_origem  || t.ContaOrigem  || t.Conta || '');
@@ -2676,11 +2707,13 @@ function setTipo(tipo) {
   // Botões — limpa todos e ativa o correto
   document.getElementById('btnDespesa').className            = 'tipo-btn' + (tipo === 'despesa'             ? ' active-despesa'       : '');
   document.getElementById('btnReceita').className            = 'tipo-btn' + (tipo === 'receita'             ? ' active-receita'       : '');
+  document.getElementById('btnInvestimento').className       = 'tipo-btn' + (tipo === 'investimento'        ? ' active-investimento'  : '');
   document.getElementById('btnTransferenciaConta').className = 'tipo-btn' + (tipo === 'transferencia_conta' ? ' active-transferencia' : '');
   document.getElementById('btnTransferencia').className      = 'tipo-btn' + (tipo === 'transferencia'       ? ' active-transferencia' : '');
 
-  const isTransfConta = tipo === 'transferencia_conta';
-  const isTransfFatura = tipo === 'transferencia';
+  const isTransfConta   = tipo === 'transferencia_conta';
+  const isTransfFatura  = tipo === 'transferencia';
+  const isInvestimento  = tipo === 'investimento';
   const isQualquerTransf = isTransfConta || isTransfFatura;
 
   // Campos comuns — ocultos em qualquer transferência
@@ -2696,17 +2729,27 @@ function setTipo(tipo) {
   document.getElementById('blocoParcelamento').style.display       = 'none';
 
   if (isTransfConta) {
-    // Popula selects de conta origem e destino
     populateContaSelect('transfContaOrigem');
     populateContaSelect('transfContaDestino');
     validarContasTransf();
   } else if (isTransfFatura) {
-    // Popula selects de conta devedora e cartão
     populateContaSelect('transfOrigemConta');
     populateCartaoSelectTransf('transfDestinoCartao');
   } else {
-    // despesa/receita — popula categorias e controla parcelamento
-    populateCatSelect('transCat', tipo);
+    // despesa / receita / investimento — popula categorias e controla parcelamento
+    // Para investimento usa categorias de despesa (ou Investimentos se existir)
+    const tipoCat = isInvestimento ? 'despesa' : tipo;
+    populateCatSelect('transCat', tipoCat);
+    // Se existir categoria "Investimentos", pré-seleciona
+    if (isInvestimento) {
+      setTimeout(() => {
+        const sel = document.getElementById('transCat');
+        const optInv = Array.from(sel.options).find(o =>
+          o.text.toLowerCase().includes('investimento') || o.value.toLowerCase().includes('investimento')
+        );
+        if (optInv) sel.value = optInv.value;
+      }, 30);
+    }
     if (typeof toggleParcelamento === 'function') toggleParcelamento();
   }
 }
@@ -2820,8 +2863,10 @@ function editarTransacao(id, e) {
   } else {
     populateContaSelect('transConta', t.Conta);
     populateCartaoSelect('transCartao', t.Cartão);
-    setTipo(tipo);
-    document.getElementById('transCat').value = t.Categoria;
+    setTipo(tipo); // handles despesa, receita, investimento
+    setTimeout(() => {
+      document.getElementById('transCat').value = t.Categoria;
+    }, 40);
   }
   openModal('modalTransacao');
 }
@@ -2870,9 +2915,10 @@ function toggleParcelamento() {
   const cartaoVal = document.getElementById('transCartao').value;
   const tipo      = document.getElementById('transTipo').value;
   const bloco     = document.getElementById('blocoParcelamento');
-  // Só mostra parcelamento se: cartão selecionado E tipo despesa
-  bloco.style.display = (cartaoVal && tipo === 'despesa') ? 'block' : 'none';
-  if (cartaoVal && tipo === 'despesa') calcularParcela();
+  // Parcelamento disponível para despesa e investimento
+  const tipoPermite = tipo === 'despesa' || tipo === 'investimento';
+  bloco.style.display = (cartaoVal && tipoPermite) ? 'block' : 'none';
+  if (cartaoVal && tipoPermite) calcularParcela();
 }
 
 function calcularParcela() {
@@ -4298,24 +4344,62 @@ async function showRelatorio(tipo, btn) {
   }
 
   if (tipo === 'categoria') {
+    // Busca dados do backend (para compatibilidade) e também calcula localmente
     const data = await apiCall('getRelatorio', { tipo:'categoria', params:{ mes:STATE.mes, ano:STATE.ano } });
-    const cats = Object.entries(data).sort((a,b)=>b[1].despesas-a[1].despesas);
-    const totalDesp = cats.reduce((s,[,v])=>s+v.despesas,0);
-    const totalRec  = cats.reduce((s,[,v])=>s+v.receitas,0);
+
+    // Recalcula localmente a partir das transações do mês para garantir
+    // que transferências NÃO entram e investimentos ficam separados
+    const despCats   = {}; // { cat: valor }
+    const invCats    = {}; // { cat: valor }
+    const recCats    = {}; // { cat: valor }
+
+    STATE.transacoes.forEach(t => {
+      const tt  = t.Tipo || 'despesa';
+      // Ignora qualquer tipo de transferência
+      if (tt === 'transferencia' || tt === 'transferencia_conta') return;
+      const cat = t.Categoria || 'Sem categoria';
+      const val = parseFloat(t.Valor || 0);
+      if (tt === 'despesa')      despCats[cat] = (despCats[cat] || 0) + val;
+      else if (tt === 'investimento') invCats[cat] = (invCats[cat] || 0) + val;
+      else if (tt === 'receita') recCats[cat]  = (recCats[cat]  || 0) + val;
+    });
+
+    // Se não tiver transações no STATE, usa dados do backend (filtrado)
+    const TIPOS_IGNOR = ['Pagamento Fatura', 'Transferência', 'transferencia', 'transferencia_conta'];
+    const catsBackend = Object.entries(data)
+      .filter(([cat]) => !TIPOS_IGNOR.some(t => cat.toLowerCase().includes(t.toLowerCase())));
+
+    const usarLocal = Object.keys(despCats).length > 0 || Object.keys(invCats).length > 0 || Object.keys(recCats).length > 0;
+
+    const totalDesp  = usarLocal ? Object.values(despCats).reduce((s,v)=>s+v,0) : catsBackend.reduce((s,[,v])=>s+(v.despesas||0),0);
+    const totalInv   = Object.values(invCats).reduce((s,v)=>s+v,0);
+    const totalRec   = usarLocal ? Object.values(recCats).reduce((s,v)=>s+v,0) : catsBackend.reduce((s,[,v])=>s+(v.receitas||0),0);
     const cores = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#DDA0DD','#FBBF24','#A29BFE','#F97316','#00E5A0','#E17055'];
 
-    el.innerHTML = `<div class="grid-2">
+    // Monta lista de despesas para o gráfico
+    const despEntries = usarLocal
+      ? Object.entries(despCats).sort((a,b)=>b[1]-a[1])
+      : catsBackend.filter(([,v])=>v.despesas>0).sort((a,b)=>b[1].despesas-a[1].despesas).map(([n,v])=>[n,v.despesas]);
+
+    const invEntries  = Object.entries(invCats).sort((a,b)=>b[1]-a[1]);
+    const recEntries  = usarLocal
+      ? Object.entries(recCats).sort((a,b)=>b[1]-a[1])
+      : catsBackend.filter(([,v])=>v.receitas>0).sort((a,b)=>b[1].receitas-a[1].receitas).map(([n,v])=>[n,v.receitas]);
+
+    el.innerHTML = `
+    <div class="grid-2">
       <div class="card">
-        <div class="card-header"><div class="card-title">🍩 Distribuição de Despesas</div>
+        <div class="card-header">
+          <div class="card-title">🍩 Distribuição de Despesas</div>
           <span style="font-size:12px;color:var(--text2)">${MESES_NOME[STATE.mes-1]}/${STATE.ano}</span>
         </div>
-        ${cats.length ? `<div style="position:relative;height:220px"><canvas id="chartRelCat"></canvas></div>` : '<div class="empty"><div class="empty-icon">📊</div><div>Sem dados</div></div>'}
+        ${despEntries.length ? `<div style="position:relative;height:220px"><canvas id="chartRelCat"></canvas></div>` : '<div class="empty"><div class="empty-icon">📊</div><div>Sem despesas</div></div>'}
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title">📋 Detalhamento por Categoria</div></div>
+        <div class="card-header"><div class="card-title">📋 Despesas por Categoria</div></div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${cats.filter(([,v])=>v.despesas>0||v.receitas>0).map(([nome,v],i)=>{
-            const pctDesp = totalDesp>0?(v.despesas/totalDesp*100):0;
+          ${despEntries.map(([nome,val],i)=>{
+            const pct = totalDesp>0?(val/totalDesp*100):0;
             return `<div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
                 <div style="display:flex;align-items:center;gap:8px">
@@ -4323,29 +4407,68 @@ async function showRelatorio(tipo, btn) {
                   <span style="font-size:13px;font-weight:500">${nome}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px">
-                  ${v.receitas>0?`<span style="font-size:12px;color:var(--green)">+${fmt(v.receitas)}</span>`:''}
-                  ${v.despesas>0?`<span style="font-size:12px;color:var(--red)">-${fmt(v.despesas)}</span>`:''}
-                  ${v.despesas>0?`<span style="font-size:12px;font-weight:700;color:var(--text);min-width:42px;text-align:right">${pctDesp.toFixed(1)}%</span>`:''}
+                  <span style="font-size:12px;color:var(--red)">-${fmt(val)}</span>
+                  <span style="font-size:12px;font-weight:700;color:var(--text);min-width:42px;text-align:right">${pct.toFixed(1)}%</span>
                 </div>
               </div>
-              ${v.despesas>0?`<div style="height:5px;background:var(--bg3);border-radius:3px"><div style="height:100%;border-radius:3px;background:${cores[i%cores.length]};width:${Math.min(100,pctDesp)}%;transition:width .5s"></div></div>`:''}
+              <div style="height:5px;background:var(--bg3);border-radius:3px"><div style="height:100%;border-radius:3px;background:${cores[i%cores.length]};width:${Math.min(100,pct)}%;transition:width .5s"></div></div>
             </div>`;
           }).join('')}
           <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;font-weight:700">
-            <span style="font-size:13px">Total</span>
-            <div style="display:flex;gap:12px">
-              ${totalRec>0?`<span style="color:var(--green)">${fmt(totalRec)}</span>`:''}
-              ${totalDesp>0?`<span style="color:var(--red)">${fmt(totalDesp)}</span>`:''}
-            </div>
+            <span style="font-size:13px">Total Despesas</span>
+            <span style="color:var(--red)">${fmt(totalDesp)}</span>
           </div>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${invEntries.length ? `
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">
+        <div class="card-title"><span class="card-title-icon">📈</span>Investimentos do Mês</div>
+        <span style="font-size:12px;background:rgba(168,85,247,.15);color:var(--purple);padding:3px 10px;border-radius:20px;font-weight:700">${fmt(totalInv)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${invEntries.map(([nome,val],i)=>{
+          const pct = totalInv>0?(val/totalInv*100):0;
+          return `<div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:10px;height:10px;border-radius:3px;background:var(--purple)"></div>
+                <span style="font-size:13px;font-weight:500">${nome}</span>
+              </div>
+              <span style="font-size:12px;color:var(--purple);font-weight:700">-${fmt(val)}</span>
+            </div>
+            <div style="height:5px;background:var(--bg3);border-radius:3px"><div style="height:100%;border-radius:3px;background:var(--purple);width:${Math.min(100,pct)}%"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+    ${recEntries.length ? `
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">
+        <div class="card-title"><span class="card-title-icon">💚</span>Receitas por Categoria</div>
+        <span style="font-size:12px;background:rgba(0,229,160,.12);color:var(--green);padding:3px 10px;border-radius:20px;font-weight:700">${fmt(totalRec)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${recEntries.map(([nome,val],i)=>{
+          const pct = totalRec>0?(val/totalRec*100):0;
+          return `<div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:10px;height:10px;border-radius:3px;background:var(--green)"></div>
+                <span style="font-size:13px;font-weight:500">${nome}</span>
+              </div>
+              <span style="font-size:12px;color:var(--green);font-weight:700">+${fmt(val)}</span>
+            </div>
+            <div style="height:5px;background:var(--bg3);border-radius:3px"><div style="height:100%;border-radius:3px;background:var(--green);width:${Math.min(100,pct)}%"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}`;
 
-    if (cats.length) setTimeout(() => {
+    if (despEntries.length) setTimeout(() => {
       destroyChart('chartRelCat');
-      const catsDesp = cats.filter(([,v])=>v.despesas>0);
-      const totalD = catsDesp.reduce((s,[,v])=>s+v.despesas,0);
+      const totalD = despEntries.reduce((s,[,v])=>s+v,0);
       const ctx2 = document.getElementById('chartRelCat')?.getContext('2d');
       if (!ctx2) return;
       const centerPlugin = {
@@ -4361,8 +4484,8 @@ async function showRelatorio(tipo, btn) {
       STATE.charts['chartRelCat'] = new Chart(ctx2, {
         type: 'doughnut',
         data: {
-          labels: catsDesp.map(([n])=>n),
-          datasets:[{data:catsDesp.map(([,v])=>v.despesas),backgroundColor:cores.slice(0,catsDesp.length),borderWidth:0}]
+          labels: despEntries.map(([n])=>n),
+          datasets:[{data:despEntries.map(([,v])=>v),backgroundColor:cores.slice(0,despEntries.length),borderWidth:0}]
         },
         options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{
           legend:{display:false},
@@ -4376,10 +4499,16 @@ async function showRelatorio(tipo, btn) {
   if (tipo === 'fluxo') {
     const txns = await apiCall('getTransacoes', { mes:STATE.mes, ano:STATE.ano });
     let saldo = 0;
-    const fluxo = txns.reverse().map(t => {
-      saldo += t.Tipo === 'receita' ? parseFloat(t.Valor||0) : -parseFloat(t.Valor||0);
-      return { data: t.Data, saldo, desc: t.Descrição, tipo: t.Tipo, valor: t.Valor };
-    });
+    // Transferências NÃO afetam o saldo no fluxo (já impactam direto no saldo das contas)
+    const fluxo = txns
+      .filter(t => t.Tipo !== 'transferencia' && t.Tipo !== 'transferencia_conta')
+      .reverse()
+      .map(t => {
+        const val = parseFloat(t.Valor || 0);
+        if (t.Tipo === 'receita') saldo += val;
+        else if (t.Tipo === 'despesa' || t.Tipo === 'investimento') saldo -= val;
+        return { data: t.Data, saldo, desc: t.Descrição, tipo: t.Tipo, valor: t.Valor };
+      });
     el.innerHTML = `<div class="card">
       <div class="card-header"><div class="card-title">💹 Fluxo de Caixa — ${MESES_NOME[STATE.mes-1]}/${STATE.ano}</div></div>
       <div class="chart-wrap-lg"><canvas id="chartFluxo"></canvas></div>
