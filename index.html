@@ -66,10 +66,37 @@
 html{scroll-behavior:smooth;overflow-x:hidden;max-width:100vw}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;max-width:100vw;transition:background .3s,color .3s}
 
-/* SCROLLBAR */
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:var(--bg2)}
-::-webkit-scrollbar-thumb{background:var(--card2);border-radius:10px}
+/* ======================================================
+   TO-DO FINANCEIRO
+   ====================================================== */
+.todo-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:640px){.todo-stats-grid{grid-template-columns:repeat(2,1fr)}}
+.todo-stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius2);padding:14px 16px;text-align:center}
+.todo-stat-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:2px}
+.todo-stat-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.todo-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.todo-filter-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.todo-filter-btn.active{background:var(--green);color:#000;border-color:var(--green)}
+.todo-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius2);margin-bottom:8px;transition:all .3s;position:relative;overflow:hidden}
+.todo-item.pago{opacity:.65}
+.todo-item.pago .todo-titulo{text-decoration:line-through;color:var(--text2)}
+.todo-item.atrasado{border-left:3px solid var(--red)}
+.todo-item.vencendo-hoje{border-left:3px solid var(--yellow)}
+.todo-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border2);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s;margin-top:1px}
+.todo-check.checked{background:var(--green);border-color:var(--green);color:#000}
+.todo-info{flex:1;min-width:0}
+.todo-titulo{font-weight:600;font-size:14px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.todo-meta{font-size:12px;color:var(--text2);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.todo-valor{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;flex-shrink:0;color:var(--red)}
+.todo-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
+.todo-badge.pago{background:rgba(0,229,160,.15);color:var(--green)}
+.todo-badge.atrasado{background:rgba(255,77,109,.15);color:var(--red)}
+.todo-badge.hoje{background:rgba(251,191,36,.15);color:var(--yellow)}
+.todo-badge.pendente{background:rgba(77,138,255,.15);color:var(--blue)}
+.todo-actions-row{display:flex;gap:6px;flex-shrink:0;align-items:center}
+/* Contas com gráfico */
+.conta-chart-wrap{height:100px;margin-top:12px;position:relative}
+
 
 /* LAYOUT */
 .app-layout{display:flex;min-height:100vh;overflow-x:hidden;max-width:100vw}
@@ -485,6 +512,7 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
       <div class="nav-item" onclick="showPage('metas')"><span class="nav-icon">🏆</span> Metas</div>
       <div class="nav-item" onclick="showPage('dividas')"><span class="nav-icon">🔴</span> Dívidas</div>
       <div class="nav-item" onclick="showPage('recorrencias')"><span class="nav-icon">🔄</span> Recorrências</div>
+      <div class="nav-item" onclick="showPage('todo')"><span class="nav-icon">✅</span> To-Do Financeiro</div>
       
       <div class="nav-section">Análises</div>
       <div class="nav-item" onclick="showPage('relatorios')"><span class="nav-icon">📋</span> Relatórios</div>
@@ -706,6 +734,33 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
         <div class="card">
           <div id="listaRecorrencias"></div>
         </div>
+      </div>
+
+      <!-- TO-DO FINANCEIRO -->
+      <div class="page" id="page-todo">
+        <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" onclick="openModal_todo()">+ Adicionar Conta</button>
+          <button class="btn btn-secondary" onclick="limparTodosPagos()">🗑️ Limpar Pagos</button>
+          <button class="btn btn-secondary" onclick="syncTodoBackground().then(()=>toast('Sync concluído!','success'))" title="Sincronizar com Google Sheets">🔄 Sincronizar</button>
+          <div id="todoSyncStatus" style="margin-left:auto"></div>
+        </div>
+        <!-- Resumo estatístico -->
+        <div class="todo-stats-grid" id="todoStats"></div>
+        <!-- Filtros -->
+        <div class="todo-filters">
+          <button class="todo-filter-btn active" onclick="filtrarTodo('todos',this)">📋 Todos</button>
+          <button class="todo-filter-btn" onclick="filtrarTodo('pendentes',this)">🕐 Pendentes</button>
+          <button class="todo-filter-btn" onclick="filtrarTodo('pagos',this)">✅ Pagos</button>
+          <button class="todo-filter-btn" onclick="filtrarTodo('hoje',this)">📅 Vence Hoje</button>
+          <button class="todo-filter-btn" onclick="filtrarTodo('atrasados',this)">⚠️ Atrasados</button>
+        </div>
+        <!-- Busca -->
+        <div class="search-bar" style="margin-bottom:16px">
+          <span>🔍</span>
+          <input type="text" placeholder="Buscar tarefas..." id="searchTodo" oninput="renderTodo()">
+        </div>
+        <!-- Lista -->
+        <div id="listaTodo"></div>
       </div>
 
       <!-- RELATÓRIOS -->
@@ -1472,6 +1527,59 @@ pre,code{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
   </div>
 </div>
 
+<!-- MODAL TO-DO FINANCEIRO -->
+<div class="modal-overlay" id="modalTodo">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTodoTitulo">✅ Nova Tarefa</div>
+      <button class="modal-close" onclick="closeModal('modalTodo')">✕</button>
+    </div>
+    <input type="hidden" id="todoId">
+    <div class="form-group">
+      <label class="form-label">Título *</label>
+      <input class="form-input" id="todoTitulo" placeholder="Ex: Conta de luz, Aluguel, Escola...">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Valor</label>
+        <input class="form-input" id="todoValor" type="number" step="0.01" placeholder="0,00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vencimento *</label>
+        <input class="form-input" id="todoVencimento" type="date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select class="form-input" id="todoCategoria">
+          <option value="">Selecionar...</option>
+          <option>Moradia</option><option>Alimentação</option><option>Saúde</option>
+          <option>Transporte</option><option>Educação</option><option>Assinaturas</option>
+          <option>Lazer</option><option>Impostos</option><option>Outros</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prioridade</label>
+        <select class="form-input" id="todoPrioridade">
+          <option value="normal">Normal</option>
+          <option value="alta">🔴 Alta</option>
+          <option value="media">🟡 Média</option>
+          <option value="baixa">🟢 Baixa</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observação</label>
+      <input class="form-input" id="todoObs" placeholder="Detalhes adicionais...">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="closeModal('modalTodo')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center" onclick="salvarTodo()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast-container" id="toastContainer"></div>
 
@@ -1973,6 +2081,16 @@ function demoApiCall(action, payload) {
     case 'addCategoria': {const c={...payload.payload,ID:'CAT'+Date.now(),Ativa:true};DEMO.categorias.push(c);return{success:true};}
     case 'deleteCategoria': {const i=DEMO.categorias.findIndex(x=>x.ID==payload.id);if(i>-1)DEMO.categorias.splice(i,1);return{success:true};}
     case 'processarRecorrencias': return {success:true,processadas:0};
+
+    // ── TO-DO FINANCEIRO (modo demo) ──────────────────────────
+    // Em modo demo não há servidor real — retorna lista vazia para que
+    // o localStorage seja a única fonte de verdade.
+    case 'getTodoFinanceiro': return [];
+    case 'syncTodoFinanceiro': return {success:true, sincronizados: (payload.todos||[]).length};
+    // TO-DO FINANCEIRO — no modo demo, o "servidor" é o próprio localStorage
+    // Em produção real, o GAS responde com os dados da planilha
+    case 'getTodoFinanceiro':    return [];  // demo: sem dados remotos → usa só o local
+    case 'syncTodoFinanceiro':   return { success: true, sincronizados: (payload.todos||[]).length };
     case 'getConfig': return {moeda_principal:STATE.moeda,nome_usuario:STATE.nomeUsuario};
     default: return {success:true};
   }
@@ -2020,6 +2138,7 @@ const PAGE_TITLES = {
   dashboard:'Dashboard',transacoes:'Transações',orcamento:'Orçamento',
   cartoes:'Cartões de Crédito',contas:'Contas Bancárias',investimentos:'Investimentos',
   metas:'Metas Financeiras',dividas:'Controle de Dívidas',recorrencias:'Recorrências',
+  todo:'✅ To-Do Financeiro',
   relatorios:'Relatórios',categorias:'Categorias',importar:'📥 Importar Dados',config:'Configurações'
 };
 
@@ -2047,7 +2166,15 @@ function showPage(id) {
         apiCall('getTransacoes', {}).then(t => { STATE.todasTransacoes = t; })
       ]).then(() => renderCartoes());
       break;
-    case 'contas': loadContas().then(renderContas); break;
+    case 'contas':
+      // Carrega contas + TODAS as transações (para os gráficos por conta)
+      Promise.all([
+        loadContas(),
+        apiCall('getTransacoes', { mes: STATE.mes, ano: STATE.ano }).then(t => { STATE.transacoes = t; }),
+        apiCall('getTransacoes', {}).then(t => { STATE.todasTransacoes = t; })
+      ]).then(() => renderContas());
+      break;
+    case 'todo': loadTodo(); break;
     case 'investimentos': loadInvestimentos().then(renderInvestimentos); break;
     case 'metas': loadMetas().then(renderMetas); break;
     case 'dividas': loadDividas().then(renderDividas); break;
@@ -2697,24 +2824,46 @@ function filterTrans(tipo, btn) {
 }
 
 function renderTransacoes() {
-  const search = document.getElementById('searchTrans')?.value.toLowerCase() || '';
+  const search = document.getElementById('searchTrans')?.value.toLowerCase().trim() || '';
   let list = [...STATE.transacoes];
 
   if (STATE.transFilter !== 'todos') {
     if (STATE.transFilter === 'transferencia') {
-      // Agrupa as duas variantes de transferência no mesmo filtro
       list = list.filter(t => t.Tipo === 'transferencia' || t.Tipo === 'transferencia_conta');
     } else {
       list = list.filter(t => (t.Tipo||'despesa') === STATE.transFilter);
     }
   }
+
   if (search) {
-    list = list.filter(t =>
-      (t.Descrição||t.descricao||'').toLowerCase().includes(search) ||
-      (t.Categoria||'').toLowerCase().includes(search) ||
-      (t.Conta_Origem||t.conta_origem||'').toLowerCase().includes(search) ||
-      (t.Conta_Destino||t.conta_destino||'').toLowerCase().includes(search)
-    );
+    list = list.filter(t => {
+      // Resolve o banco da conta associada à transação
+      const contaNome = String(t.Conta || t.conta || t.Conta_Origem || t.conta_origem || '').toLowerCase();
+      const contaObj  = STATE.contas.find(c => (c.Nome||c.nome||'').toLowerCase() === contaNome);
+      const bancoNome = contaObj ? String(contaObj.Banco||contaObj.banco||'').toLowerCase() : '';
+      const tipoConta = contaObj ? String(contaObj.Tipo||contaObj.tipo||'').toLowerCase() : '';
+
+      return (
+        (t.Descrição||t.descricao||'').toLowerCase().includes(search)    ||
+        (t.Categoria||'').toLowerCase().includes(search)                  ||
+        contaNome.includes(search)                                        ||
+        bancoNome.includes(search)                                        ||
+        tipoConta.includes(search)                                        ||
+        (t.Conta_Destino||t.conta_destino||'').toLowerCase().includes(search) ||
+        (t.Observações||t.observacoes||'').toLowerCase().includes(search) ||
+        (t.Tipo||'').toLowerCase().includes(search)                       ||
+        // Busca pelo nome do cartão vinculado
+        (() => {
+          const cartaoId = String(t.Cartão||t.cartao||'').toLowerCase();
+          if (!cartaoId) return false;
+          const cartaoObj = STATE.cartoes.find(c =>
+            String(c.ID||c.id||'').toLowerCase() === cartaoId ||
+            String(c.Nome||c.nome||'').toLowerCase() === cartaoId
+          );
+          return cartaoObj ? String(cartaoObj.Nome||cartaoObj.nome||'').toLowerCase().includes(search) : cartaoId.includes(search);
+        })()
+      );
+    });
   }
 
   const el = document.getElementById('listaTransacoes');
@@ -2993,8 +3142,11 @@ async function salvarTransacao() {
   const id             = document.getElementById('transId').value;
   const tipo           = document.getElementById('transTipo').value;
   const dataRaw        = document.getElementById('transData').value;
-  // Envia com T12:00:00 para evitar bug de fuso UTC→dia anterior no Apps Script
-  const dataSafe       = dataRaw ? dataRaw + 'T12:00:00' : dataRaw;
+  // Usa a hora REAL do momento do lançamento para ordenação cronológica correta.
+  // Evita o bug do T12:00:00 que colocava transações novas no meio da lista.
+  const agora = new Date();
+  const horaReal = `${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}:${String(agora.getSeconds()).padStart(2,'0')}`;
+  const dataSafe       = dataRaw ? `${dataRaw}T${horaReal}` : dataRaw;
   const valorTotal     = parseFloat(document.getElementById('transValor').value);
 
   // ── TRANSFERÊNCIA ENTRE CONTAS ─────────────────────────────────────────────
@@ -3794,20 +3946,61 @@ async function deletarCartao(id) {
 }
 
 // ============================================================
-// CONTAS
+// CONTAS — com gráfico individual por conta
 // ============================================================
 function renderContas() {
   const el = document.getElementById('listaContas');
-  if (!STATE.contas.length) { el.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🏦</div><div class="empty-text">Nenhuma conta cadastrada</div></div>'; return; }
+  if (!STATE.contas.length) {
+    el.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🏦</div><div class="empty-text">Nenhuma conta cadastrada</div></div>';
+    return;
+  }
+
   const tipoIcons = {corrente:'🏦',poupanca:'💚',investimento:'📈',dinheiro:'💵',digital:'📱'};
-  el.innerHTML = STATE.contas.map(c => `
-    <div class="card" style="border-top:3px solid ${c.Cor||'#00B894'};padding:18px">
+  const meses6 = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(STATE.ano, STATE.mes - 1 - i, 1);
+    meses6.push({ mes: d.getMonth() + 1, ano: d.getFullYear(), label: ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][d.getMonth()] });
+  }
+
+  // Destrói charts antigos de contas
+  Object.keys(STATE.charts).filter(k => k.startsWith('chartConta_')).forEach(k => {
+    try { STATE.charts[k].destroy(); } catch(e) {}
+    delete STATE.charts[k];
+  });
+
+  el.innerHTML = STATE.contas.map(c => {
+    const saldo = parseFloat(c.Saldo_Atual || c.saldo_atual || 0);
+    const saldoInicial = parseFloat(c.Saldo_Inicial || c.saldo_inicial || 0);
+    const cor = c.Cor || c.cor || '#00B894';
+    const cId = String(c.ID || c.id);
+    const cNome = String(c.Nome || c.nome || '').toLowerCase();
+
+    // Calcula entradas e saídas dos últimos 6 meses para esta conta
+    const fonte = STATE.todasTransacoes || STATE.transacoes;
+    const dadosMeses = meses6.map(({ mes, ano }) => {
+      const txs = fonte.filter(t => {
+        const d = new Date(t.Data);
+        if (d.getMonth() + 1 !== mes || d.getFullYear() !== ano) return false;
+        const tc = String(t.Conta || t.conta || '').toLowerCase();
+        return tc === cNome || tc === cId.toLowerCase();
+      });
+      const entradas = txs.filter(t => t.Tipo === 'receita').reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+      const saidas   = txs.filter(t => t.Tipo === 'despesa').reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
+      return { entradas, saidas };
+    });
+
+    const totalEntradas = dadosMeses.reduce((s, d) => s + d.entradas, 0);
+    const totalSaidas   = dadosMeses.reduce((s, d) => s + d.saidas, 0);
+    const variacaoSaldo = saldo - saldoInicial;
+
+    return `
+    <div class="card" style="border-top:3px solid ${cor};padding:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:42px;height:42px;border-radius:12px;background:${c.Cor||'#00B894'}22;display:flex;align-items:center;justify-content:center;font-size:20px">${tipoIcons[c.Tipo||c.tipo]||'🏦'}</div>
+          <div style="width:42px;height:42px;border-radius:12px;background:${cor}22;display:flex;align-items:center;justify-content:center;font-size:20px">${tipoIcons[c.Tipo||c.tipo]||'🏦'}</div>
           <div>
             <div style="font-weight:700;font-size:15px">${c.Nome||c.nome}</div>
-            <div style="font-size:12px;color:var(--text2)">${c.Banco||c.banco||c.Tipo||''}</div>
+            <div style="font-size:12px;color:var(--text2)">${c.Banco||c.banco||c.Tipo||c.tipo||''}</div>
           </div>
         </div>
         <div style="display:flex;gap:6px">
@@ -3815,10 +4008,95 @@ function renderContas() {
           <button class="btn-mini btn-del" onclick="deletarConta('${c.ID||c.id}')">🗑️</button>
         </div>
       </div>
-      <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:${parseFloat(c.Saldo_Atual||c.saldo_atual||0)>=0?'var(--green)':'var(--red)'}">${fmt(c.Saldo_Atual||c.saldo_atual||0)}</div>
-      <div style="font-size:12px;color:var(--text2);margin-top:4px">Saldo inicial: ${fmt(c.Saldo_Inicial||c.saldo_inicial||0)}</div>
-    </div>
-  `).join('');
+
+      <!-- Saldo -->
+      <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:${saldo>=0?'var(--green)':'var(--red)'}">${fmt(saldo)}</div>
+      <div style="display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text2)">
+        <span>⬆️ <strong style="color:var(--green)">${fmt(totalEntradas)}</strong> entradas</span>
+        <span>⬇️ <strong style="color:var(--red)">${fmt(totalSaidas)}</strong> saídas</span>
+        <span>${variacaoSaldo >= 0 ? '📈' : '📉'} <strong style="color:${variacaoSaldo>=0?'var(--green)':'var(--red)'}">${variacaoSaldo>=0?'+':''}${fmt(variacaoSaldo)}</strong></span>
+      </div>
+
+      <!-- Gráfico 6 meses -->
+      <div class="conta-chart-wrap">
+        <canvas id="chartConta_${cId}"></canvas>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Renderiza os charts após o DOM estar pronto
+  requestAnimationFrame(() => {
+    STATE.contas.forEach(c => {
+      const cId   = String(c.ID || c.id);
+      const cNome = String(c.Nome || c.nome || '').toLowerCase();
+      const cor   = c.Cor || c.cor || '#00B894';
+      const canv  = document.getElementById(`chartConta_${cId}`);
+      if (!canv) return;
+
+      const fonte = STATE.todasTransacoes || STATE.transacoes;
+      const entradas = [], saidas = [], labels = [];
+
+      meses6.forEach(({ mes, ano, label }) => {
+        const txs = fonte.filter(t => {
+          const d = new Date(t.Data);
+          if (d.getMonth() + 1 !== mes || d.getFullYear() !== ano) return false;
+          const tc = String(t.Conta || t.conta || '').toLowerCase();
+          return tc === cNome || tc === cId.toLowerCase();
+        });
+        entradas.push(txs.filter(t => t.Tipo === 'receita').reduce((s, t) => s + parseFloat(t.Valor || 0), 0));
+        saidas.push(txs.filter(t => t.Tipo === 'despesa').reduce((s, t) => s + parseFloat(t.Valor || 0), 0));
+        labels.push(label);
+      });
+
+      try {
+        STATE.charts[`chartConta_${cId}`] = new Chart(canv.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Entradas',
+                data: entradas,
+                backgroundColor: 'rgba(0,229,160,0.6)',
+                borderColor: 'rgba(0,229,160,1)',
+                borderWidth: 1,
+                borderRadius: 4
+              },
+              {
+                label: 'Saídas',
+                data: saidas,
+                backgroundColor: 'rgba(255,77,109,0.55)',
+                borderColor: 'rgba(255,77,109,0.9)',
+                borderWidth: 1,
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 600 },
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: { color: 'rgba(200,200,220,.8)', font: { size: 10 }, boxWidth: 10, padding: 8 }
+              },
+              tooltip: {
+                callbacks: {
+                  label: ctx => ` ${ctx.dataset.label}: R$ ${ctx.parsed.y.toFixed(2).replace('.',',')}`
+                }
+              }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: 'rgba(200,200,220,.7)', font: { size: 10 } } },
+              y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: 'rgba(200,200,220,.7)', font: { size: 10 }, callback: v => 'R$'+v } }
+            }
+          }
+        });
+      } catch(e) { console.warn('Chart conta error:', e); }
+    });
+  });
 }
 
 function editarConta(id) {
@@ -5315,6 +5593,416 @@ async function instalarPWA() {
 }
 
 console.log('💰 Financer Pro v2.5 PWA', STATE.isDemo ? '(Demo)' : '(Conectado)');
+
+// ============================================================
+// TO-DO FINANCEIRO — Persistência Híbrida Multi-dispositivo
+//
+// Arquitetura:
+//   1. localStorage  → resposta instantânea + funcionamento offline
+//   2. Google Sheets → sincronização real entre dispositivos
+//
+// Fluxo ao abrir:
+//   local → renderiza → GAS sync em background → merge → re-renderiza
+//
+// Conflitos: campo updatedAt mais recente vence (last-write-wins)
+// Deleção:   soft-delete (_deleted=true) propagado ao servidor
+// Offline:   mudanças ficam em fila (fp_todo_dirty) e sincronizam
+//            automaticamente ao reconectar
+// ============================================================
+
+const TODO_KEY   = 'fp_todo_v1';       // todos ativos (sem _deleted)
+const TODO_ALL   = 'fp_todo_all_v1';   // todos incluindo soft-deleted (para merge)
+const TODO_DIRTY = 'fp_todo_dirty_v1'; // IDs com mudanças não sincronizadas
+let   TODO_FILTER  = 'todos';
+let   TODO_SYNCING = false;
+
+// ── STORAGE LOCAL ──────────────────────────────────────────────────────────────
+
+/** Retorna todos visíveis (sem _deleted) */
+function getTodos() {
+  try { return JSON.parse(localStorage.getItem(TODO_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+/** Salva a lista de todos visíveis */
+function _saveTodosVisible(todos) {
+  try { localStorage.setItem(TODO_KEY, JSON.stringify(todos)); }
+  catch(e) { console.error('saveTodos:', e); }
+}
+
+/** Retorna TODOS incluindo soft-deleted (usado no merge) */
+function _getAllTodos() {
+  try {
+    const raw = localStorage.getItem(TODO_ALL);
+    return raw ? JSON.parse(raw) : getTodos();
+  } catch(e) { return getTodos(); }
+}
+
+/** Persiste lista completa (com soft-deleted) e atualiza a visível */
+function _saveAllTodos(todos) {
+  try {
+    localStorage.setItem(TODO_ALL, JSON.stringify(todos));
+    _saveTodosVisible(todos.filter(t => !t._deleted));
+  } catch(e) { console.error('_saveAllTodos:', e); }
+}
+
+// ── FILA DE DIRTY IDs ──────────────────────────────────────────────────────────
+
+function _getDirtyIds()   { try { return JSON.parse(localStorage.getItem(TODO_DIRTY) || '[]'); } catch(e) { return []; } }
+function _marcarDirty(id) { try { const d = _getDirtyIds(); if (!d.includes(id)) d.push(id); localStorage.setItem(TODO_DIRTY, JSON.stringify(d)); } catch(e) {} }
+function _limparDirty(ids){ try { localStorage.setItem(TODO_DIRTY, JSON.stringify(_getDirtyIds().filter(x => !ids.includes(x)))); } catch(e) {} }
+
+// ── MERGE (resolução de conflitos) ─────────────────────────────────────────────
+
+/**
+ * Mescla dados locais com dados do servidor.
+ * Regra: updatedAt mais recente vence para cada ID.
+ * IDs novos no servidor são adicionados ao local e vice-versa.
+ * Soft-delete (_deleted=true) propaga para ambos os lados.
+ */
+function _mergeTodos(localAll, remoto) {
+  const mapa = {};
+  localAll.forEach(t => { mapa[t.id] = { ...t }; });
+
+  remoto.forEach(r => {
+    // Normaliza campos do servidor (o GAS pode retornar com capitalização diferente)
+    const norm = {
+      id:         r.id         || r.ID         || '',
+      titulo:     r.titulo     || r.Titulo     || '',
+      valor:      parseFloat(r.valor || r.Valor || 0),
+      vencimento: r.vencimento || r.Vencimento || '',
+      categoria:  r.categoria  || r.Categoria  || '',
+      prioridade: r.prioridade || r.Prioridade || 'normal',
+      obs:        r.obs        || r.Obs        || r.Observacao || '',
+      pago:       r.pago === true || r.Pago === 'TRUE' || r.Pago === true,
+      criadoEm:   r.criadoEm   || r.CriadoEm   || r.criado_em  || '',
+      updatedAt:  r.updatedAt  || r.UpdatedAt  || r.updated_at || '',
+      pagoEm:     r.pagoEm     || r.PagoEm     || null,
+      _deleted:   r._deleted   || r.Deleted === 'TRUE' || r.Deleted === true || false,
+    };
+    if (!norm.id) return;
+    const local = mapa[norm.id];
+    if (!local) {
+      mapa[norm.id] = norm;
+    } else {
+      const dtL = new Date(local.updatedAt || local.criadoEm || 0);
+      const dtR = new Date(norm.updatedAt  || norm.criadoEm  || 0);
+      if (dtR > dtL) mapa[norm.id] = norm;
+    }
+  });
+
+  return Object.values(mapa);
+}
+
+// ── INDICADOR DE STATUS ────────────────────────────────────────────────────────
+
+function _todoSetStatus(status) {
+  const el = document.getElementById('todoSyncStatus');
+  if (!el) return;
+  const cfg = {
+    syncing: ['🔄', 'Sincronizando...', 'var(--blue)'],
+    ok:      ['☁️',  'Sincronizado',     'var(--green)'],
+    error:   ['⚠️',  'Erro no sync',     'var(--yellow)'],
+    offline: ['📴',  'Sem conexão',      'var(--text2)'],
+    local:   ['💾',  'Apenas local',     'var(--text2)'],
+  };
+  const [icon, txt, cor] = cfg[status] || cfg.local;
+  el.innerHTML = `<span style="color:${cor};font-size:12px;display:flex;align-items:center;gap:4px">${icon} ${txt}</span>`;
+}
+
+// ── SYNC COM GAS ───────────────────────────────────────────────────────────────
+
+/** Verifica se a integração com Apps Script está ativa */
+function _todoGasAtivo() { return !STATE.isDemo && !!STATE.apiUrl; }
+
+/**
+ * Sincronização bidirecional em background.
+ * 1. Busca todos do servidor
+ * 2. Merge local ↔ servidor (updatedAt vence)
+ * 3. Envia registros dirty para o servidor (upsert em lote)
+ * 4. Salva resultado final localmente
+ * 5. Re-renderiza se a página estiver ativa
+ */
+async function syncTodoBackground() {
+  if (!_todoGasAtivo() || TODO_SYNCING) return;
+  TODO_SYNCING = true;
+  _todoSetStatus('syncing');
+  try {
+    // Passo 1: baixa do servidor
+    const remoto = await apiCall('getTodoFinanceiro', {});
+    if (!Array.isArray(remoto)) throw new Error('Resposta inválida do servidor');
+
+    // Passo 2: merge
+    const localAll = _getAllTodos();
+    const merged   = _mergeTodos(localAll, remoto);
+    _saveAllTodos(merged);
+
+    // Passo 3: envia registros dirty (incluindo _deleted)
+    const dirtyIds = _getDirtyIds();
+    if (dirtyIds.length > 0) {
+      const paraSinc = merged.filter(t => dirtyIds.includes(t.id));
+      if (paraSinc.length > 0) {
+        await apiCall('syncTodoFinanceiro', { todos: paraSinc });
+        _limparDirty(paraSinc.map(t => t.id));
+      }
+    }
+
+    // Passo 4: re-renderiza se a aba estiver visível
+    if (document.getElementById('page-todo')?.classList.contains('active')) renderTodo();
+    _todoSetStatus('ok');
+  } catch(e) {
+    console.warn('[Todo Sync]', e.message);
+    _todoSetStatus(navigator.onLine ? 'error' : 'offline');
+  } finally {
+    TODO_SYNCING = false;
+  }
+}
+
+// ── OPERAÇÕES CRUD LOCAIS + DISPARO DE SYNC ────────────────────────────────────
+
+/** Persiste um todo localmente e agenda sync em background */
+function _todoUpsertLocal(tarefa) {
+  const all = _getAllTodos();
+  const idx = all.findIndex(t => t.id === tarefa.id);
+  if (idx > -1) all[idx] = tarefa;
+  else all.unshift(tarefa);
+  _saveAllTodos(all);
+  _marcarDirty(tarefa.id);
+  setTimeout(syncTodoBackground, 800);
+}
+
+/** Soft-delete local + sync */
+function _todoSoftDeleteLocal(id) {
+  const all = _getAllTodos();
+  const t   = all.find(x => x.id === id);
+  if (!t) return;
+  t._deleted  = true;
+  t.updatedAt = new Date().toISOString();
+  _saveAllTodos(all);
+  _marcarDirty(id);
+  setTimeout(syncTodoBackground, 800);
+}
+
+// ── PÁGINA ─────────────────────────────────────────────────────────────────────
+
+async function loadTodo() {
+  // Renderiza imediatamente do cache local (zero latência percebida)
+  renderTodo();
+  if (_todoGasAtivo()) {
+    syncTodoBackground(); // background, não bloqueia
+  } else {
+    _todoSetStatus(STATE.isDemo ? 'local' : 'offline');
+  }
+}
+
+function openModal_todo() {
+  document.getElementById('todoId').value = '';
+  document.getElementById('modalTodoTitulo').textContent = '✅ Nova Tarefa';
+  document.getElementById('todoTitulo').value    = '';
+  document.getElementById('todoValor').value     = '';
+  document.getElementById('todoVencimento').value= '';
+  document.getElementById('todoCategoria').value = '';
+  document.getElementById('todoPrioridade').value= 'normal';
+  document.getElementById('todoObs').value       = '';
+  openModal('modalTodo');
+}
+
+function salvarTodo() {
+  const titulo = document.getElementById('todoTitulo').value.trim();
+  const venc   = document.getElementById('todoVencimento').value;
+  if (!titulo) { toast('Informe o título da tarefa', 'error'); return; }
+  if (!venc)   { toast('Informe a data de vencimento', 'error'); return; }
+
+  const existingId = document.getElementById('todoId').value;
+  const agora = new Date().toISOString();
+  const todos = getTodos();
+  const old   = existingId ? todos.find(t => t.id === existingId) : null;
+
+  const tarefa = {
+    id:         existingId || ('TD' + Date.now()),
+    titulo,
+    valor:      parseFloat(document.getElementById('todoValor').value) || 0,
+    vencimento: venc,
+    categoria:  document.getElementById('todoCategoria').value,
+    prioridade: document.getElementById('todoPrioridade').value,
+    obs:        document.getElementById('todoObs').value,
+    pago:       old ? old.pago    : false,
+    pagoEm:     old ? old.pagoEm  : null,
+    criadoEm:   old ? old.criadoEm: agora,
+    updatedAt:  agora,
+    _deleted:   false,
+  };
+
+  _todoUpsertLocal(tarefa);
+  toast(existingId ? 'Tarefa atualizada! ✅' : 'Tarefa adicionada! ✅');
+  closeModal('modalTodo');
+  renderTodo();
+}
+
+function toggleTodoPago(id) {
+  const todos = getTodos();
+  const t = todos.find(x => x.id === id);
+  if (!t) return;
+  t.pago     = !t.pago;
+  t.pagoEm   = t.pago ? new Date().toISOString() : null;
+  t.updatedAt= new Date().toISOString();
+  _todoUpsertLocal(t);
+  renderTodo();
+  if (t.pago) toast(`✅ "${t.titulo}" marcado como pago!`);
+}
+
+function editarTodo(id) {
+  const t = getTodos().find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('todoId').value              = t.id;
+  document.getElementById('modalTodoTitulo').textContent= '✏️ Editar Tarefa';
+  document.getElementById('todoTitulo').value          = t.titulo;
+  document.getElementById('todoValor').value           = t.valor || '';
+  document.getElementById('todoVencimento').value      = t.vencimento;
+  document.getElementById('todoCategoria').value       = t.categoria || '';
+  document.getElementById('todoPrioridade').value      = t.prioridade || 'normal';
+  document.getElementById('todoObs').value             = t.obs || '';
+  openModal('modalTodo');
+}
+
+function deletarTodo(id) {
+  if (!confirm('Excluir esta tarefa?')) return;
+  _todoSoftDeleteLocal(id);
+  renderTodo();
+  toast('Tarefa removida!');
+}
+
+function limparTodosPagos() {
+  const pagos = getTodos().filter(t => t.pago);
+  if (!pagos.length) { toast('Nenhuma tarefa paga para remover', 'info'); return; }
+  if (!confirm(`Remover ${pagos.length} tarefa(s) paga(s)?`)) return;
+  pagos.forEach(t => _todoSoftDeleteLocal(t.id));
+  renderTodo();
+  toast(`${pagos.length} tarefa(s) removida(s)!`);
+}
+
+function filtrarTodo(filtro, btn) {
+  TODO_FILTER = filtro;
+  document.querySelectorAll('.todo-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderTodo();
+}
+
+// ── HELPERS DE RENDER ──────────────────────────────────────────────────────────
+
+function statusTodo(t) {
+  if (t.pago) return 'pago';
+  const hoje = new Date();
+  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  if (t.vencimento < hojeStr)  return 'atrasado';
+  if (t.vencimento === hojeStr) return 'hoje';
+  return 'pendente';
+}
+
+function prioridadeIcon(p) {
+  return {alta:'🔴',media:'🟡',baixa:'🟢',normal:'⚪'}[p] || '⚪';
+}
+
+// ── RENDER PRINCIPAL ───────────────────────────────────────────────────────────
+
+function renderTodo() {
+  const todosAll = getTodos();
+  const hoje     = new Date();
+  const hojeStr  = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  const search   = (document.getElementById('searchTodo')?.value || '').toLowerCase().trim();
+
+  // ── Stats ──────────────────────────────────────────────────
+  const totalPendente = todosAll.filter(t => !t.pago).reduce((s, t) => s + (t.valor||0), 0);
+  const totalPago     = todosAll.filter(t =>  t.pago).reduce((s, t) => s + (t.valor||0), 0);
+  const qtdAtrasado   = todosAll.filter(t => !t.pago && t.vencimento < hojeStr).length;
+  const statsEl = document.getElementById('todoStats');
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <div class="todo-stat">
+        <div class="todo-stat-val" style="color:var(--red)">${fmt(totalPendente)}</div>
+        <div class="todo-stat-lbl">💰 Total Pendente</div>
+      </div>
+      <div class="todo-stat">
+        <div class="todo-stat-val" style="color:var(--green)">${fmt(totalPago)}</div>
+        <div class="todo-stat-lbl">✅ Total Pago</div>
+      </div>
+      <div class="todo-stat">
+        <div class="todo-stat-val" style="color:var(--blue)">${todosAll.length}</div>
+        <div class="todo-stat-lbl">📋 Total de Contas</div>
+      </div>
+      <div class="todo-stat">
+        <div class="todo-stat-val" style="color:var(--red)">${qtdAtrasado}</div>
+        <div class="todo-stat-lbl">⚠️ Atrasadas</div>
+      </div>`;
+  }
+
+  // ── Filtro e ordenação ─────────────────────────────────────
+  let lista = [...todosAll];
+  if (TODO_FILTER === 'pendentes')  lista = lista.filter(t => !t.pago);
+  if (TODO_FILTER === 'pagos')      lista = lista.filter(t =>  t.pago);
+  if (TODO_FILTER === 'hoje')       lista = lista.filter(t => !t.pago && t.vencimento === hojeStr);
+  if (TODO_FILTER === 'atrasados')  lista = lista.filter(t => !t.pago && t.vencimento < hojeStr);
+  if (search) {
+    lista = lista.filter(t =>
+      (t.titulo||'').toLowerCase().includes(search) ||
+      (t.categoria||'').toLowerCase().includes(search) ||
+      (t.obs||'').toLowerCase().includes(search)
+    );
+  }
+  // Atrasados → hoje → pendentes → pagos; por vencimento dentro de cada grupo
+  lista.sort((a, b) => {
+    const ordem = {atrasado:0,hoje:1,pendente:2,pago:3};
+    const oa = ordem[statusTodo(a)], ob = ordem[statusTodo(b)];
+    if (oa !== ob) return oa - ob;
+    return (a.vencimento||'').localeCompare(b.vencimento||'');
+  });
+
+  // ── Render ─────────────────────────────────────────────────
+  const listEl = document.getElementById('listaTodo');
+  if (!listEl) return;
+  if (!lista.length) {
+    listEl.innerHTML = `<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">${todosAll.length ? 'Nenhuma tarefa neste filtro' : 'Nenhuma conta cadastrada. Clique em "+ Adicionar Conta"!'}</div></div>`;
+    return;
+  }
+
+  listEl.innerHTML = lista.map(t => {
+    const st       = statusTodo(t);
+    const badgeMap = {pago:'✅ Pago',atrasado:'⚠️ Atrasado',hoje:'📅 Vence Hoje',pendente:'🕐 Pendente'};
+    const vencFmt  = t.vencimento ? new Date(t.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '–';
+    const dirtyIcon= _getDirtyIds().includes(t.id) ? `<span title="Aguardando sync" style="color:var(--yellow);font-size:10px">●</span>` : '';
+    return `
+    <div class="todo-item ${st==='pago'?'pago':''} ${st==='atrasado'?'atrasado':''} ${st==='hoje'?'vencendo-hoje':''}">
+      <div class="todo-check ${t.pago?'checked':''}" onclick="toggleTodoPago('${t.id}')">
+        ${t.pago ? '✓' : ''}
+      </div>
+      <div class="todo-info">
+        <div class="todo-titulo">${prioridadeIcon(t.prioridade)} ${t.titulo} ${dirtyIcon}</div>
+        <div class="todo-meta">
+          <span>📅 ${vencFmt}</span>
+          ${t.categoria ? `<span>🏷️ ${t.categoria}</span>` : ''}
+          ${t.obs ? `<span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.obs}">💬 ${t.obs}</span>` : ''}
+          <span class="todo-badge ${st}">${badgeMap[st]}</span>
+        </div>
+      </div>
+      ${t.valor > 0 ? `<div class="todo-valor">${fmt(t.valor)}</div>` : ''}
+      <div class="todo-actions-row">
+        <button class="btn-mini btn-edit" onclick="editarTodo('${t.id}')">✏️</button>
+        <button class="btn-mini btn-del"  onclick="deletarTodo('${t.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── RECONEXÃO AUTOMÁTICA ───────────────────────────────────────────────────────
+
+window.addEventListener('online', () => {
+  if (_todoGasAtivo() && _getDirtyIds().length > 0) {
+    toast('🔄 Reconectado — sincronizando To-Do...', 'info');
+    setTimeout(syncTodoBackground, 1000);
+  }
+});
+window.addEventListener('offline', () => _todoSetStatus('offline'));
+
 </script>
 </body>
 </html>
