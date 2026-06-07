@@ -2020,13 +2020,29 @@ function demoApiCall(action, payload) {
       };
       DEMO.transacoes.unshift(t);
 
-      // Se for transferência entre contas, atualiza o saldo das contas no demo
-      // Os values do select são os NOMES das contas (ver populateContaSelect)
-      if (t.Tipo === 'transferencia_conta' && t.Conta_Origem && t.Conta_Destino) {
+      // Atualiza saldo conforme o tipo da transação
+      if (t.Tipo === 'receita') {
+        // Credita conta
+        const c = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta || String(c.ID||c.id) === String(t.Conta));
+        if (c) c.Saldo_Atual = parseFloat(c.Saldo_Atual || 0) + t.Valor;
+
+      } else if (t.Tipo === 'despesa') {
+        // Debita conta
+        const c = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta || String(c.ID||c.id) === String(t.Conta));
+        if (c) c.Saldo_Atual = parseFloat(c.Saldo_Atual || 0) - t.Valor;
+
+      } else if (t.Tipo === 'transferencia') {
+        // Pagamento de fatura de cartão — debita conta de origem.
+        // O crédito no cartão é virtual (reduz o comprometido), não é uma conta bancária.
+        const cOrig = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta || String(c.ID||c.id) === String(t.Conta));
+        if (cOrig) cOrig.Saldo_Atual = parseFloat(cOrig.Saldo_Atual || 0) - t.Valor;
+
+      } else if (t.Tipo === 'transferencia_conta') {
+        // Transferência entre contas — debita origem e credita destino
         const cOrig = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta_Origem || String(c.ID||c.id) === String(t.Conta_Origem));
         const cDest = DEMO.contas.find(c => (c.Nome||c.nome) === t.Conta_Destino || String(c.ID||c.id) === String(t.Conta_Destino));
-        if (cOrig)  cOrig.Saldo_Atual  = parseFloat(cOrig.Saldo_Atual  || 0) - t.Valor;
-        if (cDest)  cDest.Saldo_Atual  = parseFloat(cDest.Saldo_Atual  || 0) + t.Valor;
+        if (cOrig) cOrig.Saldo_Atual = parseFloat(cOrig.Saldo_Atual || 0) - t.Valor;
+        if (cDest) cDest.Saldo_Atual = parseFloat(cDest.Saldo_Atual || 0) + t.Valor;
       }
 
       return {success:true, id:t.ID};
@@ -3481,8 +3497,36 @@ async function salvarPagamentoFatura() {
 
   try {
     await apiCall('addTransacao', { payload });
+
+    // ── DEBITAR CONTA DE ORIGEM ──────────────────────────────────────────────
+    // O GAS addTransacao() não atualiza o saldo para tipo='transferencia'.
+    // Fazemos isso explicitamente via updateConta, exatamente como em
+    // salvarTransacao() para transferencia_conta.
+    //
+    // populateContaSelect usa o NOME como value → contaId já é o nome da conta.
+    const contaObj = STATE.contas.find(c => (c.Nome||c.nome) === contaId);
+    if (contaObj) {
+      const novoSaldo = parseFloat(contaObj.Saldo_Atual || 0) - valor;
+      await apiCall('updateConta', {
+        payload: {
+          ID:            contaObj.ID    || contaObj.id,
+          Nome:          contaObj.Nome  || contaObj.nome,
+          Tipo:          contaObj.Tipo  || contaObj.tipo  || 'corrente',
+          Saldo_Inicial: parseFloat(contaObj.Saldo_Inicial || contaObj.saldo_inicial || 0),
+          Saldo_Atual:   novoSaldo,
+          Banco:         contaObj.Banco || contaObj.banco || '',
+          Cor:           contaObj.Cor   || contaObj.cor   || '#00B894',
+          Ativa:         true
+        }
+      });
+      // Atualiza STATE local para exibição imediata
+      contaObj.Saldo_Atual = novoSaldo;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     toast(`🔄 Pagamento de R$ ${valor.toFixed(2)} registrado para ${cartaoNome}! ✅`, 'success');
     closeModal('modalPagamentoFatura');
+    loadContas();
     loadTransacoes();
     loadDashboard();
     if (document.getElementById('page-cartoes').classList.contains('active')) renderCartoes();
