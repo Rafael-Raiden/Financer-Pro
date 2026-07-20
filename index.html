@@ -3207,49 +3207,27 @@ async function salvarTransacao() {
       observacoes:   document.getElementById('transObs').value,
     };
 
-    if (id) {
-      // Edição: só atualiza a transação; saldo já foi ajustado antes
-      await apiCall('updateTransacao', { payload: { ...payload, ID: id } });
-      toast('Transferência atualizada! ✅');
-    } else {
-      // ── NOVA TRANSFERÊNCIA ─────────────────────────────────────────────────
-      // O GAS addTransacao() chama atualizarSaldoConta(p.conta, p.tipo, valor).
-      // Como p.tipo === 'transferencia_conta' ≠ 'receita', ele DEBITA a conta origem ✓
-      // Mas ele NÃO credita a conta destino — faremos isso manualmente com updateConta().
-      await apiCall('addTransacao', { payload });
-
-      // ── CREDITAR CONTA DESTINO via updateConta ─────────────────────────────
-      // O GAS updateConta() sobrescreve Saldo_Atual diretamente na planilha ✓
-      if (cDestObj) {
-        const novoSaldoDest = parseFloat(cDestObj.Saldo_Atual || 0) + valorTotal;
-        await apiCall('updateConta', {
-          payload: {
-            ID:            cDestObj.ID    || cDestObj.id,
-            Nome:          cDestObj.Nome  || cDestObj.nome,
-            Tipo:          cDestObj.Tipo  || cDestObj.tipo  || 'corrente',
-            Saldo_Inicial: parseFloat(cDestObj.Saldo_Inicial || cDestObj.saldo_inicial || 0),
-            Saldo_Atual:   novoSaldoDest,
-            Banco:         cDestObj.Banco || cDestObj.banco || '',
-            Cor:           cDestObj.Cor   || cDestObj.cor   || '#00B894',
-            Ativa:         true
-          }
-        });
-        // Atualiza STATE local imediatamente
-        cDestObj.Saldo_Atual = novoSaldoDest;
+    try {
+      if (id) {
+        // Edição: reverte o efeito antigo e reaplica o novo — tudo dentro do GAS
+        await apiCall('updateTransacao', { payload: { ...payload, ID: id } });
+        toast('Transferência atualizada! ✅');
+      } else {
+        // ── NOVA TRANSFERÊNCIA ───────────────────────────────────────────────
+        // O GAS addTransacao() agora debita a origem E credita o destino
+        // (payload.conta_destino) na MESMA chamada — atômico, sem depender de
+        // uma segunda requisição do frontend nem do STATE em cache.
+        await apiCall('addTransacao', { payload });
+        toast(`🔄 ${fmt(valorTotal)} transferido: ${nomeOrigem} → ${nomeDestino} ✅`);
       }
 
-      // Atualiza STATE da origem também (o GAS já debitou no servidor)
-      if (cOrigObj) {
-        cOrigObj.Saldo_Atual = parseFloat(cOrigObj.Saldo_Atual || 0) - valorTotal;
-      }
-
-      toast(`🔄 ${fmt(valorTotal)} transferido: ${nomeOrigem} → ${nomeDestino} ✅`);
+      closeModal('modalTransacao');
+      await Promise.all([loadContas(), loadTransacoes()]);
+      loadDashboard();
+      if (document.getElementById('page-contas').classList.contains('active')) renderContas();
+    } catch (e) {
+      toast('Erro ao transferir: ' + e.message, 'error');
     }
-
-    closeModal('modalTransacao');
-    await Promise.all([loadContas(), loadTransacoes()]);
-    loadDashboard();
-    if (document.getElementById('page-contas').classList.contains('active')) renderContas();
     return;
   }
 
@@ -3496,33 +3474,9 @@ async function salvarPagamentoFatura() {
   };
 
   try {
+    // O GAS addTransacao() já debita a conta de origem para tipo='transferencia'
+    // nesta mesma chamada — não é mais necessário um updateConta() manual aqui.
     await apiCall('addTransacao', { payload });
-
-    // ── DEBITAR CONTA DE ORIGEM ──────────────────────────────────────────────
-    // O GAS addTransacao() não atualiza o saldo para tipo='transferencia'.
-    // Fazemos isso explicitamente via updateConta, exatamente como em
-    // salvarTransacao() para transferencia_conta.
-    //
-    // populateContaSelect usa o NOME como value → contaId já é o nome da conta.
-    const contaObj = STATE.contas.find(c => (c.Nome||c.nome) === contaId);
-    if (contaObj) {
-      const novoSaldo = parseFloat(contaObj.Saldo_Atual || 0) - valor;
-      await apiCall('updateConta', {
-        payload: {
-          ID:            contaObj.ID    || contaObj.id,
-          Nome:          contaObj.Nome  || contaObj.nome,
-          Tipo:          contaObj.Tipo  || contaObj.tipo  || 'corrente',
-          Saldo_Inicial: parseFloat(contaObj.Saldo_Inicial || contaObj.saldo_inicial || 0),
-          Saldo_Atual:   novoSaldo,
-          Banco:         contaObj.Banco || contaObj.banco || '',
-          Cor:           contaObj.Cor   || contaObj.cor   || '#00B894',
-          Ativa:         true
-        }
-      });
-      // Atualiza STATE local para exibição imediata
-      contaObj.Saldo_Atual = novoSaldo;
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
     toast(`🔄 Pagamento de R$ ${valor.toFixed(2)} registrado para ${cartaoNome}! ✅`, 'success');
     closeModal('modalPagamentoFatura');
