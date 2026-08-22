@@ -2664,10 +2664,16 @@ function renderDashFaturas() {
       });
       const totalPagamentoMes = pagamentosMes.reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
 
+      // Arredonda para centavos antes de comparar — soma de floats pode fechar em
+      // algo como 259.9999999999998 em vez de 260, o que fazia a fatura aparecer
+      // como "Parcial" (e não "Pago") mesmo exibindo R$ 0,00 de saldo.
+      const totalMesC           = Math.round(totalMes * 100);
+      const totalPagamentoMesC  = Math.round(totalPagamentoMes * 100);
+
       // Fatura líquida = compras do mês − pagamentos do mês (mín 0)
-      const faturaLiquida     = Math.max(0, totalMes - totalPagamentoMes);
-      const pago              = totalPagamentoMes >= totalMes && totalMes > 0;
-      const parcialmentePago  = totalPagamentoMes > 0 && !pago;
+      const faturaLiquida     = Math.max(0, Math.round((totalMesC - totalPagamentoMesC)) / 100);
+      const pago              = totalMesC > 0 && totalPagamentoMesC >= totalMesC;
+      const parcialmentePago  = totalPagamentoMesC > 0 && !pago;
 
       const limite = parseFloat(c.Limite || c.limite || 0);
       const venc   = c.Dia_Vencimento || c.dia_vencimento || '–';
@@ -3737,7 +3743,8 @@ function calcularFaturaCartao(idx) {
     .reduce((s, t) => s + parseFloat(t.Valor || 0), 0);
 
   // Saldo devedor real = gasto - pago (nunca negativo)
-  return Math.max(0, totalGasto - totalPago);
+  // Arredonda para centavos para evitar resíduos de ponto flutuante (ex: 0.000000000002)
+  return Math.max(0, Math.round((totalGasto - totalPago) * 100) / 100);
 }
 
 /**
