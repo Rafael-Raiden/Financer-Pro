@@ -7,7 +7,7 @@
 //   • Fontes / CDN / ícones    → cache primeiro
 // ============================================================
 
-const CACHE_STATIC = 'financer-static-v3';
+const CACHE_STATIC = 'financer-static-v4';
 
 // Caminhos RELATIVOS ao sw.js: funciona na raiz do domínio (Vercel) e
 // também em subpastas (ex.: GitHub Pages em /financer-pro/).
@@ -18,7 +18,7 @@ const PRECACHE_URLS = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
-  'https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap',
+  'https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
 ];
 
