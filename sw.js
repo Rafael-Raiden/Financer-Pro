@@ -7,7 +7,7 @@
 //   • Fontes / CDN / ícones    → cache primeiro
 // ============================================================
 
-const CACHE_STATIC = 'financer-static-v4';
+const CACHE_STATIC = 'financer-static-v5';
 
 // Caminhos RELATIVOS ao sw.js: funciona na raiz do domínio (Vercel) e
 // também em subpastas (ex.: GitHub Pages em /financer-pro/).
@@ -20,6 +20,7 @@ const PRECACHE_URLS = [
   'icons/apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/@flaticon/flaticon-uicons@3.3.1/css/bold/rounded.css',
 ];
 
 // ── INSTALL ───────────────────────────────────────────────────
@@ -72,7 +73,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Google Fonts e CDN — cache primeiro
-  if (host === 'fonts.googleapis.com' || host === 'fonts.gstatic.com' || host === 'cdnjs.cloudflare.com') {
+  if (host === 'fonts.googleapis.com' || host === 'fonts.gstatic.com' || host === 'cdnjs.cloudflare.com' || host === 'cdn.jsdelivr.net') {
     event.respondWith(
       caches.match(request).then((cached) =>
         cached || fetch(request).then((response) => guardarNoCache(request, response))
